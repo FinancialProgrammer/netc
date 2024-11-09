@@ -1,3 +1,6 @@
+#ifndef __NETC_RAW_INCLUDED
+#define __NETC_RAW_INCLUDED
+
 #define NC_INVL_RAW_SOCK -1
 
 typedef struct {
@@ -32,6 +35,8 @@ nc_error_t nraw_read(nc_raw_socket_t *sock, void *buf, size_t buf_size, size_t *
 // option
 nc_error_t nraw_setopt(nc_raw_socket_t *sock, nc_option_t option, void *data, size_t data_size);
 nc_error_t nraw_getopt(nc_raw_socket_t *sock, nc_option_t option, void *null_data, size_t data_size); // overwrites null_data
+
+#endif // __NETC_RAW_INCLUDED
 
 #ifdef NC_IMPLEMENTATION
   #include <sys/ioctl.h>
@@ -184,4 +189,5 @@ nc_error_t nraw_getopt(nc_raw_socket_t *sock, nc_option_t option, void *null_dat
     return NC_ERR_GOOD;
   }
   nc_error_t nraw_getopt(nc_raw_socket_t *sock, nc_option_t option, void *null_data, size_t data_size) { return NC_ERR_NOT_IMPLEMENTED; }
+  #undef NC_IMPLEMENTATION
 #endif // NC_IMPLEMENTATION

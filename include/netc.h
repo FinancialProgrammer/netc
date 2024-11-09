@@ -1,3 +1,6 @@
+#ifndef __NETC_INCLUDED
+#define __NETC_INCLUDED
+
 // global include
 #include <stddef.h>
 #include <stdint.h>
@@ -51,6 +54,8 @@ typedef union {
   } af_inet6;
 } nc_address_t;
 
+#endif // __NETC_INCLUDED
+
 // ------------ backend api ------------ // 
 // --- RAW --- //
 #if defined(WIN32) || defined(__MINGW32__) || defined(WIN64) || defined(__MINGW64__) // check for winsock (32)
@@ -70,8 +75,6 @@ typedef union {
 #ifdef NC_TLS
   #include <ncsrc/tls_src.h>
 #endif
-
-
 
 // ------------ wrapper api ------------ // 
 /*

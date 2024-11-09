@@ -1,5 +1,9 @@
+#include <netc.h>
+#include <netc.h>
+
 #define NC_IMPLEMENTATION
 #include <netc.h>
+#include <netc.h> // auto undefs NC_IMPLEMENTATION
 
 #include <stdio.h>
 
