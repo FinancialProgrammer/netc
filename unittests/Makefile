@@ -1,6 +1,9 @@
 CC = gcc
 
-all: connect.out
+all: connect.out rw.out
 
-%.out: connect.c
+%.out: %.c
 	${CC} -o $@ $<
+
+clean:
+	rm *.out

@@ -2,6 +2,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <string.h>
+#include <time.h>
 
 // STATIC
 // ERRORS
@@ -18,13 +19,21 @@
   #define NC_ERR_ILL_FORMED_MESSAGE ((nc_error_t)10)
   #define NC_ERR_SOCKET_CLOSED ((nc_error_t)11)
   #define NC_ERR_WOULD_BLOCK ((nc_error_t)12)
+  #define NC_ERR_SET_OPT_FAIL ((nc_error_t)13)
 // OPTIONS
-  #define NC_OPT_NULL ((nc_option_t)0)
-  #define NC_OPT_IPV4 ((nc_option_t)1)
-  #define NC_OPT_IPV6 ((nc_option_t)2)
-  // #define NC_OPT_URL  ((nc_option_t)3)
-  #define NC_OPT_TCP  ((nc_option_t)4)
-  #define NC_OPT_UDP  ((nc_option_t)5)
+  #define NC_OPT_NULL         ((nc_option_t)0)
+  #define NC_OPT_IPV4         ((nc_option_t)1)
+  #define NC_OPT_IPV6         ((nc_option_t)2)
+  #define NC_OPT_TCP          ((nc_option_t)4)
+  #define NC_OPT_UDP          ((nc_option_t)5)
+  #define NC_OPT_SOCK_STREAM  ((nc_option_t)6)
+  #define NC_OPT_DGRAM        ((nc_option_t)7)
+  #define NC_OPT_RECV_TIMEOUT ((nc_option_t)8)
+  #define NC_OPT_SEND_TIMEOUT ((nc_option_t)9)
+    typedef struct {
+      time_t sec; // seconds
+      time_t usec; // micro seconds
+    } ns_timeval;
 // Types
 typedef int nc_error_t;
 typedef int nc_option_t;
