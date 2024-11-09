@@ -8,6 +8,9 @@
 #include <time.h>
 
 // STATIC
+// Types
+  typedef int nc_error_t;
+  typedef int nc_option_t;
 // ERRORS
   #define NC_ERR_GOOD ((nc_error_t)0)
   #define NC_ERR_NULL ((nc_error_t)1)
@@ -23,6 +26,7 @@
   #define NC_ERR_SOCKET_CLOSED ((nc_error_t)11)
   #define NC_ERR_WOULD_BLOCK ((nc_error_t)12)
   #define NC_ERR_SET_OPT_FAIL ((nc_error_t)13)
+  const char *nstrerr(nc_error_t); // return stringed error
 // OPTIONS
   #define NC_OPT_NULL         ((nc_option_t)0)
   #define NC_OPT_IPV4         ((nc_option_t)1)
@@ -37,24 +41,78 @@
       time_t sec; // seconds
       time_t usec; // micro seconds
     } ns_timeval_t;
-// Types
-typedef int nc_error_t;
-typedef int nc_option_t;
 
-typedef union {
-  struct {
-    uint16_t port;
-    char address[16];
-  } af_inet;
-  struct {
-    uint16_t port;
-    uint32_t flowinfo;
-    char address[46];
-    uint32_t scope_id;
-  } af_inet6;
-} nc_address_t;
+
+// ------------ wrapper api ------------ // 
+#define NCSOCKET void
+struct nc_socket_t {
+  nc_error_t (*open)(void*, char const*);
+  nc_error_t (*close)(void*);
+  nc_error_t (*write)(void*, const void *, size_t, size_t*, nc_option_t);
+  nc_error_t (*read)(void*, void *, size_t, size_t*, nc_option_t);
+  nc_error_t (*setopt)(void*, nc_option_t, void*, size_t);
+  nc_error_t (*getopt)(void*, nc_option_t, void*, size_t);
+  void *sock;
+};
+typedef struct nc_socket_t nc_socket_t;
+
+// deletion
+nc_error_t nclose(nc_socket_t *sock);
+
+// connect
+nc_error_t nopen(nc_socket_t *sock, const char *ip);
+
+// functionality
+nc_error_t nwrite(nc_socket_t *sock, const void *buf, size_t bufsize, size_t *bytes_written, nc_option_t opt);
+nc_error_t nread(nc_socket_t *sock, void *buf, size_t bufsize, size_t *bytes_read, nc_option_t opt);
+
+// options
+nc_error_t nsetopt(nc_socket_t *sock, nc_option_t opt, void *data, size_t data_size);
+nc_error_t ngetopt(nc_socket_t *sock, nc_option_t opt, void *data, size_t data_size);
 
 #endif // __NETC_INCLUDED
+
+#ifdef NC_WRAPPER_IMPL
+  // deletion
+  nc_error_t nclose(nc_socket_t *sock) { return sock->close(sock->sock); }
+
+  // connect
+  nc_error_t nopen(nc_socket_t *sock, const char *ip) { return sock->open(sock->sock, ip); }
+
+  // functionality
+  nc_error_t nwrite(nc_socket_t *sock, const void *buf, size_t bufsize, size_t *bytes_written, nc_option_t opt) {
+    return sock->write(sock->sock, buf, bufsize, bytes_written, opt);
+  }
+  nc_error_t nread(nc_socket_t *sock, void *buf, size_t bufsize, size_t *bytes_read, nc_option_t opt) {
+    return sock->read(sock->sock, buf, bufsize, bytes_read, opt);
+  }
+
+  // options
+  nc_error_t nsetopt(nc_socket_t *sock, nc_option_t opt, void *data, size_t data_size) {
+    return sock->setopt(sock->sock, opt, data, data_size);
+  }
+  nc_error_t ngetopt(nc_socket_t *sock, nc_option_t opt, void *data, size_t data_size) {
+    return sock->getopt(sock->sock, opt, data, data_size);
+  }
+  static const char *nstrerrarr[] = {
+    "No error spotted",
+    "Couldn't parse error",
+    "Invalid Memory",
+    "Invalid Argument",
+    "Invalid Address",
+    "Connection Refused",
+    "Not Inited",
+    "Timed Out",
+    "Feature Not Implemented Yet",
+    "Not Connected",
+    "Ill Formed Message",
+    "Socket Closed",
+    "Would Block",
+    "Option couldn't be set"
+  };
+  const char *nstrerr(nc_error_t err) { return nstrerrarr[err]; }
+  #undef NC_WRAPPER_IMPL
+#endif // NC_IMPLEMENTATION
 
 // ------------ backend api ------------ // 
 // --- RAW --- //
@@ -75,34 +133,3 @@ typedef union {
 #ifdef NC_TLS
   #include <ncsrc/tls_src.h>
 #endif
-
-// ------------ wrapper api ------------ // 
-/*
-// (if only pure socket functionality is wanted checkout the backend api instead, it is still easy to use but doesn't allow for easy encryption use)
-
-// backend struct
-struct nsock;
-struct nsock {
-  // point to raw socket or extenstion socket 
-  // (i don't like using malloc as it is incredibly slow compared to everything else but since this wrapper api is made for usability it shouldn't matter)
-  // (unfortunately dynamicisity is needed in this case)
-  void *socket;
-  nc_error_t (*close)(struct nsock*);
-  nc_error_t (*write)(struct nsock*, const void *, size_t, ssize_t*, nc_option_t);
-  nc_error_t (*read)(struct nsock*, void *, size_t, ssize_t*, nc_option_t);
-  nc_error_t (*setopt)(struct nsock*, nc_option_t, void*, size_t);
-  nc_error_t (*getopt)(struct nsock*, nc_option_t, void*, size_t); // get information
-};
-
-// open (unique to each extenstion)
-// sock_type[tcp,udp], addr_type[ipv4,ipv6,url]
-nc_error_t nopen(struct nsock *sock, nc_option_t info); // open raw socket
-// nc_error_t nopentls(struct nsock *sock);
-
-// wrapper callback (just calls internal nsock functions) (if wanted the names are standard up there and could be called manually)
-nc_error_t nclose(struct nsock *sock);
-nc_error_t nwrite(struct nsock *sock, const void *buf, size_t buf_size, size_t *bytes_read, nc_option_t param);
-nc_error_t nread(struct nsock *sock, void *buf, size_t buf_size, size_t *bytes_read, nc_option_t param);
-nc_error_t nsetopt(struct nsock *sock, nc_option_t option, void *data, size_t data_size);
-nc_error_t ngetopt(struct nsock *sock, nc_option_t option, void *null_data, size_t data_size); // overwrites null_data
-*/

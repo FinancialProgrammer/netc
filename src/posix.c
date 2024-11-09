@@ -13,22 +13,6 @@
 #include <netinet/in.h>
 #include <netinet/tcp.h>
 
-static const char *nrawerrors[] = {
-  "No error spotted",
-  "Couldn't parse error",
-  "Invalid Memory",
-  "Invalid Argument",
-  "Invalid Address",
-  "Connection Refused",
-  "Not Inited",
-  "Timed Out",
-  "Feature Not Implemented Yet",
-  "Not Connected",
-  "Ill Formed Message",
-  "Socket Closed",
-  "Would Block",
-  "Option couldn't be set"
-};
 nc_error_t __internal_nraw_convert_errno() {
   switch (errno) {
     case EADDRNOTAVAIL: return NC_ERR_INVALID_ADDRESS; // Cannot assign requested address 
@@ -43,10 +27,10 @@ nc_error_t __internal_nraw_convert_errno() {
     default: return NC_ERR_NULL;
   };
 }
-const char *nraw_strerr(nc_error_t err) { return nrawerrors[err]; }
 
 // connection
-nc_error_t nraw_socket(nc_raw_socket_t *sock) {
+nc_error_t nraw_socket(void *void_sock) {
+  nc_raw_socket_t *sock = (nc_raw_socket_t*)void_sock;
   int posix_protocol = 0;
   if (sock->protocol == NC_OPT_TCP) {
     posix_protocol = IPPROTO_TCP;
@@ -65,7 +49,8 @@ nc_error_t nraw_socket(nc_raw_socket_t *sock) {
 
   return NC_ERR_GOOD;
 }
-nc_error_t nraw_open(nc_raw_socket_t *sock, const char *ipaddr) {
+nc_error_t nraw_open(void *void_sock, const char *ipaddr) {
+  nc_raw_socket_t *sock = (nc_raw_socket_t*)void_sock;
   if (sock->domain == NC_OPT_IPV6) { 
     struct sockaddr_in6 address;
     memset(&address, 0, sizeof(address)); // Ensure the structure is zeroed out
@@ -101,10 +86,15 @@ nc_error_t nraw_open(nc_raw_socket_t *sock, const char *ipaddr) {
   }
   return NC_ERR_GOOD;
 }
-nc_error_t nraw_close(nc_raw_socket_t *sock) { close(sock->fd); return NC_ERR_GOOD; }
+nc_error_t nraw_close(void *void_sock) { 
+  nc_raw_socket_t *sock = (nc_raw_socket_t*)void_sock; 
+  close(sock->fd); 
+  return NC_ERR_GOOD; 
+}
 
 // write, read
-nc_error_t nraw_write(nc_raw_socket_t *sock, const void *buf, size_t buf_size, size_t *bytes_written, nc_option_t param) {
+nc_error_t nraw_write(void *void_sock, const void *buf, size_t buf_size, size_t *bytes_written, nc_option_t param) {
+  nc_raw_socket_t *sock = (nc_raw_socket_t*)void_sock;
   ssize_t bwrite = send(sock->fd, buf, buf_size, 0);
   if (bwrite == -1) {
     *bytes_written = 0;
@@ -114,7 +104,8 @@ nc_error_t nraw_write(nc_raw_socket_t *sock, const void *buf, size_t buf_size, s
     return NC_ERR_GOOD;
   }
 }
-nc_error_t nraw_read(nc_raw_socket_t *sock, void *buf, size_t buf_size, size_t *bytes_read, nc_option_t param) {
+nc_error_t nraw_read(void *void_sock, void *buf, size_t buf_size, size_t *bytes_read, nc_option_t param) {
+  nc_raw_socket_t *sock = (nc_raw_socket_t*)void_sock;
   ssize_t bread = recv(sock->fd, buf, buf_size, 0);
   if (bread == -1) {
     *bytes_read = 0;
@@ -126,7 +117,8 @@ nc_error_t nraw_read(nc_raw_socket_t *sock, void *buf, size_t buf_size, size_t *
 }
 
 // option
-nc_error_t nraw_setopt(nc_raw_socket_t *sock, nc_option_t option, void *data, size_t data_size) {
+nc_error_t nraw_setopt(void *void_sock, nc_option_t option, void *data, size_t data_size) {
+  nc_raw_socket_t *sock = (nc_raw_socket_t*)void_sock;
   switch (option) {
     case NC_OPT_RECV_TIMEOUT: {
       struct timeval timeout;
@@ -148,7 +140,8 @@ nc_error_t nraw_setopt(nc_raw_socket_t *sock, nc_option_t option, void *data, si
   }
   return NC_ERR_GOOD;
 }
-nc_error_t nraw_getopt(nc_raw_socket_t *sock, nc_option_t option, void *null_data, size_t data_size) {
+nc_error_t nraw_getopt(void *void_sock, nc_option_t option, void *null_data, size_t data_size) {
+  nc_raw_socket_t *sock = (nc_raw_socket_t*)void_sock;
   switch (option) {
     case NC_OPT_RECV_TIMEOUT: {
       socklen_t timeout_size;
@@ -173,4 +166,15 @@ nc_error_t nraw_getopt(nc_raw_socket_t *sock, nc_option_t option, void *null_dat
     } default: return NC_ERR_NULL;
   }
   return NC_ERR_GOOD;
+}
+
+// netc wrapper compatibility
+nc_error_t nraw_sockwrap(nc_socket_t *sock) {
+  sock->open = &nraw_open;
+  sock->close = &nraw_close;
+  sock->write = &nraw_write;
+  sock->read = &nraw_read;
+  sock->setopt = &nraw_setopt;
+  sock->getopt = &nraw_getopt;
+  return nraw_socket(sock->sock);
 }

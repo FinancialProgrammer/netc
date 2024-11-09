@@ -3,7 +3,7 @@
 CC = gcc
 LIBS = 
 INCL = -I./include/
-ARGS = -O3
+ARGS = -fPIC -O3 -Ofast
 
 INCLS = $(shell find ./include -name '*.h')
 
@@ -20,9 +20,10 @@ libnetc.so: ${OBJECTS}
 
 libnetc.a: ${OBJECTS}
 	ar rcs $@ ${OBJECTS}
-#	${CC} -static -o $@ $^ ${LIBS} ${ARGS}
 
-install: ${INCLS}
+install: ${INCLS} libnetc.so
 	sudo cp -r include/* /usr/local/include/
-	sudo cp libnetc.* /usr/local/lib/
+	sudo cp libnetc.so /usr/local/lib/
 
+clean:
+	rm src/*.o libnetc.so libnetc.a

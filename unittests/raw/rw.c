@@ -1,9 +1,4 @@
 #include <netc.h>
-#include <netc.h>
-
-#define NC_IMPLEMENTATION
-#include <netc.h>
-#include <netc.h> // auto undefs NC_IMPLEMENTATION
 
 #include <stdio.h>
 
@@ -18,13 +13,13 @@ int main() {
 
   err = nraw_socket(&sock);
   if (err != NC_ERR_GOOD) {
-    printf("Error creating socket %s\n", nraw_strerr(err));
+    printf("Error creating socket %s\n", nstrerr(err));
     return 1;
   }
 
   err = nraw_open(&sock, "127.0.0.1");
   if (err != NC_ERR_GOOD) {
-    printf("Error opening socket %s\n", nraw_strerr(err));
+    printf("Error opening socket %s\n", nstrerr(err));
     return 1;
   }
 
@@ -34,7 +29,7 @@ int main() {
   };
   err = nraw_setopt(&sock, NC_OPT_RECV_TIMEOUT, &ts, sizeof(ts));
   if (err != NC_ERR_GOOD) {
-    printf("Error setting option on socket %s\n", nraw_strerr(err));
+    printf("Error setting option on socket %s\n", nstrerr(err));
     return 1;
   }
 
@@ -42,7 +37,7 @@ int main() {
   char req[] = "Hello, World!";
   err = nraw_write(&sock, req, sizeof(req), &bytes_sent, NC_OPT_NULL);
   if (err != NC_ERR_GOOD) {
-    printf("Error reading from socket %s\n", nraw_strerr(err));
+    printf("Error reading from socket %s\n", nstrerr(err));
     return 1;
   }
 
@@ -50,7 +45,7 @@ int main() {
   char buffer[256];
   err = nraw_read(&sock, buffer, sizeof(buffer), &bytes_recv, NC_OPT_NULL);
   if (err != NC_ERR_GOOD) {
-    printf("Error reading from socket %s\n", nraw_strerr(err));
+    printf("Error reading from socket %s\n", nstrerr(err));
     return 1;
   }
   buffer[bytes_recv] = '\0';

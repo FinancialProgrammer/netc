@@ -13,13 +13,13 @@ int main() {
 
   err = nraw_socket(&sock);
   if (err != NC_ERR_GOOD) {
-    printf("Error creating socket %s\n", nraw_strerr(err));
+    printf("Error creating socket %s\n", nstrerr(err));
     return 1;
   }
 
   err = nraw_open(&sock, "127.0.0.1");
   if (err != NC_ERR_GOOD) {
-    fprintf(stderr, "Error opening socket %s\n", nraw_strerr(err));
+    fprintf(stderr, "Error opening socket %s\n", nstrerr(err));
     return 0;
   }
 
