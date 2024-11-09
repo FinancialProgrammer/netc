@@ -10,4 +10,4 @@ all: connect.out connect.outi rw.out rw.outi
 	${CC} -o $@ $< ${LIBS}
 
 clean:
-	rm *.out
+	rm *.out *.outi
