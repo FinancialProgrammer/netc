@@ -1,9 +1,13 @@
 CC = gcc
+LIBS = -lnetc
 
-all: connect.out rw.out
+all: connect.out connect.outi rw.out rw.outi
+
+%.outi: %.ci
+	${CC} -x c -o $@ $<
 
 %.out: %.c
-	${CC} -o $@ $<
+	${CC} -o $@ $< ${LIBS}
 
 clean:
 	rm *.out

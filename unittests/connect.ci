@@ -1,3 +1,4 @@
+#define NC_IMPLEMENTATION
 #include <netc.h>
 
 #include <stdio.h>

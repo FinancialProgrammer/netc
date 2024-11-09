@@ -36,7 +36,7 @@
     typedef struct {
       time_t sec; // seconds
       time_t usec; // micro seconds
-    } ns_timeval;
+    } ns_timeval_t;
 // Types
 typedef int nc_error_t;
 typedef int nc_option_t;

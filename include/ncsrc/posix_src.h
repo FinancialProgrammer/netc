@@ -43,6 +43,7 @@ nc_error_t nraw_getopt(nc_raw_socket_t *sock, nc_option_t option, void *null_dat
   #include <sys/socket.h>
   #include <sys/types.h>
   #include <unistd.h>
+  #include <arpa/inet.h>
 
   #include <errno.h>
   #include <ifaddrs.h>
@@ -51,7 +52,7 @@ nc_error_t nraw_getopt(nc_raw_socket_t *sock, nc_option_t option, void *null_dat
   #include <netinet/in.h>
   #include <netinet/tcp.h>
 
-  const char *nrawerrors[] = {
+  static const char *nrawerrors[] = {
     "No error spotted",
     "Couldn't parse error",
     "Invalid Memory",
@@ -125,14 +126,12 @@ nc_error_t nraw_getopt(nc_raw_socket_t *sock, nc_option_t option, void *null_dat
       struct sockaddr_in address;
       address.sin_family = AF_INET; 
       address.sin_port = htons(sock->port);
-      address.sin_addr.s_addr = inet_addr(ipaddr);
+      // address.sin_addr.s_addr = inet_addr(ipaddr);
 
-    /*
       if (inet_pton(AF_INET, ipaddr, &address.sin_addr.s_addr) != 1) {
         nraw_close(sock);
         return NC_ERR_INVALID_ADDRESS;
       }
-    */
 
       if (connect(sock->fd, (struct sockaddr*)&address, sizeof(address)) == -1) {
         nraw_close(sock);
@@ -170,16 +169,16 @@ nc_error_t nraw_getopt(nc_raw_socket_t *sock, nc_option_t option, void *null_dat
     switch (option) {
       case NC_OPT_RECV_TIMEOUT: {
         struct timeval timeout;
-        timeout.tv_sec = ((ns_timeval*)data)->sec;
-        timeout.tv_usec = ((ns_timeval*)data)->usec;
+        timeout.tv_sec = ((ns_timeval_t*)data)->sec;
+        timeout.tv_usec = ((ns_timeval_t*)data)->usec;
         if (setsockopt(sock->fd, SOL_SOCKET, SO_RCVTIMEO, (struct timeval *)&timeout, sizeof(timeout)) == -1) {
           return NC_ERR_SET_OPT_FAIL;
         }
         return NC_ERR_GOOD;
       } case NC_OPT_SEND_TIMEOUT: {
         struct timeval timeout;
-        timeout.tv_sec = ((ns_timeval*)data)->sec;
-        timeout.tv_usec = ((ns_timeval*)data)->usec;
+        timeout.tv_sec = ((ns_timeval_t*)data)->sec;
+        timeout.tv_usec = ((ns_timeval_t*)data)->usec;
         if (setsockopt(sock->fd, SOL_SOCKET, SO_SNDTIMEO, (struct timeval *)&timeout, sizeof(timeout)) == -1) {
           return NC_ERR_SET_OPT_FAIL;
         }
@@ -188,6 +187,31 @@ nc_error_t nraw_getopt(nc_raw_socket_t *sock, nc_option_t option, void *null_dat
     }
     return NC_ERR_GOOD;
   }
-  nc_error_t nraw_getopt(nc_raw_socket_t *sock, nc_option_t option, void *null_data, size_t data_size) { return NC_ERR_NOT_IMPLEMENTED; }
+  nc_error_t nraw_getopt(nc_raw_socket_t *sock, nc_option_t option, void *null_data, size_t data_size) {
+    switch (option) {
+      case NC_OPT_RECV_TIMEOUT: {
+        socklen_t timeout_size;
+        struct timeval timeout;
+        if (getsockopt(sock->fd, SOL_SOCKET, SO_RCVTIMEO, (struct timeval *)&timeout, &timeout_size) == -1) {
+          return NC_ERR_SET_OPT_FAIL;
+        }
+        ns_timeval_t *nsts = (ns_timeval_t*)null_data;
+        nsts->sec = timeout.tv_sec;
+        nsts->usec = timeout.tv_usec;
+        return NC_ERR_GOOD;
+      } case NC_OPT_SEND_TIMEOUT: {
+        socklen_t timeout_size;
+        struct timeval timeout;
+        if (getsockopt(sock->fd, SOL_SOCKET, SO_SNDTIMEO, (struct timeval *)&timeout, &timeout_size) == -1) {
+          return NC_ERR_SET_OPT_FAIL;
+        }
+        ns_timeval_t *nsts = (ns_timeval_t*)null_data;
+        nsts->sec = timeout.tv_sec;
+        nsts->usec = timeout.tv_usec;
+        return NC_ERR_GOOD;
+      } default: return NC_ERR_NULL;
+    }
+    return NC_ERR_GOOD;
+  }
   #undef NC_IMPLEMENTATION
 #endif // NC_IMPLEMENTATION
