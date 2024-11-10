@@ -15,11 +15,11 @@ all: libnetc.so libnetc.a
 %.o: %.c ${INCLS}
 	${CC} -c -o $@ $< ${INCL} ${ARGS}
 
-libnetc.so: ${OBJECTS}
-	${CC} -shared -o $@ $^ ${LIBS} ${ARGS}
+libnetc.so: ${OBJECTS} openssl/libssl.a openssl/libcrypto.a
+	${CC} -shared -o $@ $^ ${LIBS} ${ARGS} openssl/libssl.a openssl/libcrypto.a
 
-libnetc.a: ${OBJECTS}
-	ar rcs $@ ${OBJECTS}
+libnetc.a: ${OBJECTS} openssl/libssl.a openssl/libcrypto.a
+	ar rcs $@ ${OBJECTS} openssl/libssl.a openssl/libcrypto.a
 
 install: ${INCLS} libnetc.so
 	sudo cp -r include/* /usr/local/include/

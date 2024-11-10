@@ -1,24 +1,5 @@
 #include <netc.h>
 
-static const char *nstrerrarr[] = {
-  "No error spotted",
-  "Couldn't parse error",
-  "Invalid Memory",
-  "Invalid Argument",
-  "Invalid Address",
-  "Connection Refused",
-  "Not Inited",
-  "Timed Out",
-  "Feature Not Implemented Yet",
-  "Not Connected",
-  "Ill Formed Message",
-  "Socket Closed",
-  "Would Block",
-  "Option couldn't be set"
-};
-const char *nstrerr(nc_error_t err) { return nstrerrarr[err]; }
-
-
 // deletion
 nc_error_t nclose(nc_socket_t *sock) { return sock->close(sock->sock); }
 
@@ -40,3 +21,22 @@ nc_error_t nsetopt(nc_socket_t *sock, nc_option_t opt, void *data, size_t data_s
 nc_error_t ngetopt(nc_socket_t *sock, nc_option_t opt, void *data, size_t data_size) {
   return sock->getopt(sock->sock, opt, data, data_size);
 }
+static const char *nstrerrarr[] = {
+  "No error spotted",
+  "Couldn't parse error",
+  "Invalid Memory",
+  "Invalid Argument",
+  "Invalid Address",
+  "Connection Refused",
+  "Not Inited",
+  "Timed Out",
+  "Feature Not Implemented Yet",
+  "Not Connected",
+  "Ill Formed Message",
+  "Socket Closed",
+  "Would Block",
+  "Option couldn't be set",
+  "Context couldn't be created",
+  "Couldn't complete handshake"
+};
+const char *nstrerr(nc_error_t err) { return nstrerrarr[err]; }

@@ -4,3 +4,4 @@ __*
 *.a
 *.so
 *.o
+openssl/

@@ -26,6 +26,8 @@
   #define NC_ERR_SOCKET_CLOSED ((nc_error_t)11)
   #define NC_ERR_WOULD_BLOCK ((nc_error_t)12)
   #define NC_ERR_SET_OPT_FAIL ((nc_error_t)13)
+  #define NC_ERR_INVL_CTX ((nc_error_t)14)
+  #define NC_ERR_BAD_HANDSHAKE ((nc_error_t)15)
   const char *nstrerr(nc_error_t); // return stringed error
 // OPTIONS
   #define NC_OPT_NULL         ((nc_option_t)0)
@@ -108,7 +110,9 @@ nc_error_t ngetopt(nc_socket_t *sock, nc_option_t opt, void *data, size_t data_s
     "Ill Formed Message",
     "Socket Closed",
     "Would Block",
-    "Option couldn't be set"
+    "Option couldn't be set",
+    "Context couldn't be created",
+    "Couldn't complete handshake"
   };
   const char *nstrerr(nc_error_t err) { return nstrerrarr[err]; }
   #undef NC_WRAPPER_IMPL
