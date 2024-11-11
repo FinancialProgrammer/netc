@@ -10,8 +10,8 @@ nc_error_t ntls_sockwrap(nc_socket_t *sock) {
   sock->close = &ntls_close;
   sock->write = &ntls_write;
   sock->read = &ntls_read;
-  sock->setopt = &ntls_setopt;
-  sock->getopt = &ntls_getopt;
+  sock->setopt = &nraw_setopt; // nraw on purpose
+  sock->getopt = &nraw_getopt; // nraw on purpose
   return ntls_socket(sock->sock);
 }
 nc_error_t ntls_socket(void *void_sock) {
