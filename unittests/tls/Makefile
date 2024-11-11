@@ -1,4 +1,4 @@
-CC = gcc
+CC = g++ -x c++ # gcc
 LIBS = -lnetc # -lssl -lcrypto
 
 all: connect.out connect.outi rw.out rw.outi

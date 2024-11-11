@@ -1,11 +1,15 @@
-#ifndef __NETC_INCLUDED
-#define __NETC_INCLUDED
-
 // global include
 #include <stddef.h>
 #include <stdint.h>
 #include <string.h>
 #include <time.h>
+
+#ifdef __cplusplus
+  extern "C" {
+#endif
+
+#ifndef __NETC_INCLUDED
+#define __NETC_INCLUDED
 
 // STATIC
 // Types
@@ -117,6 +121,10 @@ nc_error_t ngetopt(nc_socket_t *sock, nc_option_t opt, void *data, size_t data_s
   const char *nstrerr(nc_error_t err) { return nstrerrarr[err]; }
   #undef NC_WRAPPER_IMPL
 #endif // NC_IMPLEMENTATION
+
+#ifdef __cplusplus
+  }
+#endif
 
 // ------------ backend api ------------ // 
 // --- RAW --- //

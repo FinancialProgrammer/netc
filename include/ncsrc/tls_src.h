@@ -1,5 +1,10 @@
 #ifndef __NETC_TLS_INCLUDED
 #define __NETC_TLS_INCLUDED
+
+#ifdef __cplusplus
+  extern "C" {
+#endif
+
 typedef struct {
   int fd;
 
@@ -34,10 +39,18 @@ nc_error_t ntls_read(void *void_sock, void *buf, size_t buf_size, size_t *bytes_
 nc_error_t ntls_setopt(void *void_sock, nc_option_t option, void *data, size_t data_size);
 nc_error_t ntls_getopt(void *void_sock, nc_option_t option, void *null_data, size_t data_size); // overwrites null_data
 
+#ifdef __cplusplus
+  }
+#endif
+
 #endif
 
 #ifdef NC_TLS_IMPL
   #include <openssl/ssl.h>
+
+#ifdef __cplusplus
+  extern "C" {
+#endif
 
   // socket creation
   nc_error_t ntls_sockwrap(nc_socket_t *sock) {
@@ -118,5 +131,8 @@ nc_error_t ntls_getopt(void *void_sock, nc_option_t option, void *null_data, siz
   nc_error_t ntls_getopt(void *void_sock, nc_option_t option, void *null_data, size_t data_size) { // overwrites null_data
     return nraw_getopt(void_sock, option, null_data, data_size);
   }
+#ifdef __cplusplus
+  }
+#endif
   #undef NC_TLS_IMPL
 #endif

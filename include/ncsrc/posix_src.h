@@ -3,6 +3,10 @@
 
 #define NC_INVL_RAW_SOCK -1
 
+#ifdef __cplusplus
+  extern "C" {
+#endif
+
 typedef struct {
   int fd;
 
@@ -34,6 +38,10 @@ nc_error_t nraw_read(void *sock, void *buf, size_t buf_size, size_t *bytes_read,
 nc_error_t nraw_setopt(void *sock, nc_option_t option, void *data, size_t data_size);
 nc_error_t nraw_getopt(void *sock, nc_option_t option, void *null_data, size_t data_size); // overwrites null_data
 
+#ifdef __cplusplus
+  }
+#endif
+
 #endif // __NETC_RAW_INCLUDED
 
 #ifdef NC_RAW_IMPL
@@ -49,6 +57,10 @@ nc_error_t nraw_getopt(void *sock, nc_option_t option, void *null_data, size_t d
   #include <netdb.h>
   #include <netinet/in.h>
   #include <netinet/tcp.h>
+
+#ifdef __cplusplus
+  extern "C" {
+#endif
 
   nc_error_t __internal_nraw_convert_errno() {
     switch (errno) {
@@ -215,5 +227,8 @@ nc_error_t nraw_getopt(void *sock, nc_option_t option, void *null_data, size_t d
     sock->getopt = &nraw_getopt;
     return nraw_socket(sock->sock);
   }
+#ifdef __cplusplus
+  }
+#endif
   #undef NC_RAW_IMPL
 #endif // NC_IMPLEMENTATION
