@@ -5,7 +5,6 @@
   extern "C" {
 #endif
 
-struct sockaddr; // forward declare
 typedef struct {
   int fd;
 

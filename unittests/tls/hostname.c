@@ -4,10 +4,13 @@
 #include <stdio.h>
 #include <stdbool.h>
 
+#include <openssl/ssl.h>
+#include <openssl/err.h>
+
 int main() {
   nc_error_t err;
 
-  nc_raw_socket_t sock;
+  nc_tls_socket_t sock;
   sock.port = 443;
   sock.domain = NC_OPT_IPV4;
   sock.type = NC_OPT_SOCK_STREAM;
