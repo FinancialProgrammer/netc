@@ -5,6 +5,7 @@
   extern "C" {
 #endif
 
+struct sockaddr; // forward declare
 typedef struct {
   int fd;
 
@@ -16,6 +17,9 @@ typedef struct {
   uint32_t flowinfo;
   uint64_t addr;
   uint32_t scope_id;
+
+  struct sockaddr *__internal_addr;
+  size_t __internal_addrlen;
 
   nc_error_t last_error;
 

@@ -14,6 +14,7 @@ int main() {
   nc_error_t err;
 
   nc_tls_socket_t sock;
+  sock.__internal_addr = NULL; // needed for internal use
   sock.port = 8443;
   sock.domain = NC_OPT_IPV4;
   sock.type = NC_OPT_SOCK_STREAM;

@@ -37,6 +37,7 @@
   #define NC_OPT_NULL         ((nc_option_t)0)
   #define NC_OPT_IPV4         ((nc_option_t)1)
   #define NC_OPT_IPV6         ((nc_option_t)2)
+  #define NC_OPT_HOSTNAME     ((nc_option_t)3)
   #define NC_OPT_TCP          ((nc_option_t)4)
   #define NC_OPT_UDP          ((nc_option_t)5)
   #define NC_OPT_SOCK_STREAM  ((nc_option_t)6)
@@ -100,6 +101,10 @@ nc_error_t ngetopt(nc_socket_t *sock, nc_option_t opt, void *data, size_t data_s
   nc_error_t ngetopt(nc_socket_t *sock, nc_option_t opt, void *data, size_t data_size) {
     return sock->getopt(sock->sock, opt, data, data_size);
   }
+  #undef NC_WRAPPER_IMPL
+#endif // NC_IMPLEMENTATION
+
+#ifdef NC_IMPL
   static const char *nstrerrarr[] = {
     "No error spotted",
     "Couldn't parse error",
@@ -119,8 +124,8 @@ nc_error_t ngetopt(nc_socket_t *sock, nc_option_t opt, void *data, size_t data_s
     "Couldn't complete handshake"
   };
   const char *nstrerr(nc_error_t err) { return nstrerrarr[err]; }
-  #undef NC_WRAPPER_IMPL
-#endif // NC_IMPLEMENTATION
+  #undef NC_IMPL
+#endif
 
 #ifdef __cplusplus
   }

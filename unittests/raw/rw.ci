@@ -1,7 +1,7 @@
 #include <netc.h>
 #include <netc.h>
 
-#define NC_WRAPPER_IMPL
+#define NC_IMPL
 #define NC_RAW_IMPL
 #include <netc.h>
 #include <netc.h> // auto undefs NC_IMPLEMENTATION
@@ -12,6 +12,7 @@ int main() {
   nc_error_t err;
 
   nc_raw_socket_t sock;
+  sock.__internal_addr = NULL; // needed for internal use
   sock.port = 10000;
   sock.domain = NC_OPT_IPV4;
   sock.type = NC_OPT_SOCK_STREAM;

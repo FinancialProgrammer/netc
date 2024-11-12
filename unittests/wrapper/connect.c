@@ -6,6 +6,7 @@ int main() {
   nc_error_t err;
 
   nc_raw_socket_t backend_sock;
+  sock.__internal_addr = NULL; // needed for internal use
   backend_sock.port = 10000;
   backend_sock.domain = NC_OPT_IPV4;
   backend_sock.type = NC_OPT_SOCK_STREAM;

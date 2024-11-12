@@ -13,6 +13,9 @@
 #include <netinet/in.h>
 #include <netinet/tcp.h>
 
+#include <stdio.h>
+#include <stdlib.h>
+
 nc_error_t __internal_nraw_convert_errno() {
   switch (errno) {
     case EADDRNOTAVAIL: return NC_ERR_INVALID_ADDRESS; // Cannot assign requested address 
@@ -31,6 +34,7 @@ nc_error_t __internal_nraw_convert_errno() {
 // connection
 nc_error_t nraw_socket(void *void_sock) {
   nc_raw_socket_t *sock = (nc_raw_socket_t*)void_sock;
+
   int posix_protocol = 0;
   if (sock->protocol == NC_OPT_TCP) {
     posix_protocol = IPPROTO_TCP;
@@ -51,7 +55,13 @@ nc_error_t nraw_socket(void *void_sock) {
 }
 nc_error_t nraw_open(void *void_sock, const char *ipaddr) {
   nc_raw_socket_t *sock = (nc_raw_socket_t*)void_sock;
-  if (sock->domain == NC_OPT_IPV6) { 
+
+  if (!ipaddr) {
+    if (connect(sock->fd, sock->__internal_addr, sock->__internal_addrlen) == -1) {
+      nraw_close(sock); 
+      return __internal_nraw_convert_errno(); 
+    } 
+  } else if (sock->domain == NC_OPT_IPV6) { 
     struct sockaddr_in6 address;
     memset(&address, 0, sizeof(address)); // Ensure the structure is zeroed out
     address.sin6_family = AF_INET6; 
@@ -72,7 +82,6 @@ nc_error_t nraw_open(void *void_sock, const char *ipaddr) {
     struct sockaddr_in address;
     address.sin_family = AF_INET; 
     address.sin_port = htons(sock->port);
-    // address.sin_addr.s_addr = inet_addr(ipaddr);
 
     if (inet_pton(AF_INET, ipaddr, &address.sin_addr.s_addr) != 1) {
       nraw_close(sock);
@@ -84,11 +93,16 @@ nc_error_t nraw_open(void *void_sock, const char *ipaddr) {
       return __internal_nraw_convert_errno(); 
     }
   }
+
   return NC_ERR_GOOD;
 }
 nc_error_t nraw_close(void *void_sock) { 
   nc_raw_socket_t *sock = (nc_raw_socket_t*)void_sock; 
-  close(sock->fd); 
+  close(sock->fd);
+  if (sock->__internal_addr) {
+    free(sock->__internal_addr);
+    sock->__internal_addr = NULL;
+  }
   return NC_ERR_GOOD; 
 }
 
@@ -178,3 +192,47 @@ nc_error_t nraw_sockwrap(nc_socket_t *sock) {
   sock->getopt = &nraw_getopt;
   return nraw_socket(sock->sock);
 }
+
+// auxiliary
+nc_error_t nraw_resolvehost(void *void_sock, const char *ipaddr) {
+  nc_raw_socket_t *sock = (nc_raw_socket_t*)void_sock;
+  struct addrinfo hints, *res;
+
+  // translate raw socket to hints
+  memset(&hints, 0, sizeof(hints));
+  if (sock->domain == NC_OPT_IPV4) hints.ai_family = AF_INET;
+  else if (sock->domain == NC_OPT_IPV6) hints.ai_family = AF_INET6;
+  else hints.ai_family = AF_UNSPEC;
+
+  if (sock->type == NC_OPT_SOCK_STREAM) hints.ai_socktype = SOCK_STREAM;
+  else if (sock->type == NC_OPT_DGRAM) hints.ai_socktype = SOCK_DGRAM;
+
+  if (sock->protocol == NC_OPT_TCP) hints.ai_protocol = IPPROTO_TCP;
+  else if (sock->protocol == NC_OPT_UDP) hints.ai_protocol = IPPROTO_UDP;
+
+  // what a nice standard
+  // thanks posix
+  // lets constantly switch between stringed and integral versions of erverything
+  // i think this makes for a more fun api
+  char port_str[6]; // buffer to hold the port number as a string (max for 16-bit integer is 65535)
+  snprintf(port_str, sizeof(port_str), "%u", sock->port);
+
+  int status = getaddrinfo(ipaddr, port_str, &hints, &res);
+  if (status != 0) {
+    return NC_ERR_INVALID_ADDRESS;
+  }
+
+  // Translate res back to raw socket
+  sock->domain   = res->ai_family   == AF_INET     ? NC_OPT_IPV4        : NC_OPT_IPV6 ;
+  sock->type     = res->ai_socktype == SOCK_STREAM ? NC_OPT_SOCK_STREAM : NC_OPT_DGRAM;
+  sock->protocol = res->ai_protocol == IPPROTO_TCP ? NC_OPT_TCP         : NC_OPT_UDP  ;
+
+  sock->__internal_addrlen = res->ai_addrlen;
+  sock->__internal_addr = (struct sockaddr*)malloc(res->ai_addrlen);
+  memcpy(sock->__internal_addr, res->ai_addr, res->ai_addrlen);
+
+  freeaddrinfo(res);
+
+  return NC_ERR_GOOD;
+}
+
