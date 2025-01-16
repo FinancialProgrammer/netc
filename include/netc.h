@@ -47,8 +47,7 @@
       time_t sec; // seconds
       time_t usec; // micro seconds
     } ns_timeval_t;
-
-
+  #define NC_OPT_DO_ALL ((nc_option_t)10)
 // ------------ wrapper api ------------ // 
 #define NCSOCKET void
 struct nc_socket_t {
@@ -84,18 +83,7 @@ nc_error_t ngetopt(nc_socket_t *sock, nc_option_t opt, void *data, size_t data_s
 
 // ------------ backend api ------------ // 
 // --- RAW --- //
-#if defined(WIN32) || defined(__MINGW32__) || defined(WIN64) || defined(__MINGW64__) // check for winsock (32)
-  #include <ncsrc/win_src.h>
-#else // else assume posix (posix has no actual way to check)
-  // ignore error if operating system is likely to use the posix standard
-  #if defined(__linux__) || defined(__sun) || defined(__FreeBSD__) || defined(__NetBSD__) || defined(__OpenBSD__) || \
-    (defined(__APPLE__) && defined(__MACH__)) || defined(__MSYS__) || defined(__unix__)
-    #include <ncsrc/posix_src.h>
-  #else
-    #pragma message("Unknown operating system attempting to use POSIX")
-    #include <ncsrc/posix_src.h>
-  #endif
-#endif // end
+#include <ncsrc/raw_src.h>
 
 // --- TLS/SSL --- //
 #ifdef NC_TLS
