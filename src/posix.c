@@ -125,6 +125,7 @@ nc_error_t nraw_write(void *void_sock, const void *buf, size_t buf_size, size_t 
         *bytes_written = sent_bytes;
         return err;
       }
+      buf += bwritten;
       sent_bytes += bwritten;
     }
     *bytes_written = sent_bytes;
@@ -153,6 +154,7 @@ nc_error_t nraw_read(void *void_sock, void *buf, size_t buf_size, size_t *bytes_
         *bytes_read = bytes_recv;
         return err;
       }
+      buf += bread;
       bytes_recv += bread;
     }
     *bytes_read = bytes_recv;
