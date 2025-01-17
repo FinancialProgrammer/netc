@@ -37,6 +37,7 @@ static const char *nstrerrarr[] = {
   "Would Block",
   "Option couldn't be set",
   "Context couldn't be created",
-  "Couldn't complete handshake"
+  "Couldn't complete handshake",
+  "Exit flag was set before completion"
 };
 const char *nstrerr(nc_error_t err) { return nstrerrarr[err]; }

@@ -16,6 +16,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+nc_exit_flag_t G_default_exit_flag = NC_NO_EXIT;
+nc_exit_flag_t *G_exit_flag = &G_default_exit_flag;
+
 nc_error_t __internal_nraw_convert_errno() {
   switch (errno) {
     case EADDRNOTAVAIL: return NC_ERR_INVALID_ADDRESS; // Cannot assign requested address 
@@ -112,10 +115,14 @@ nc_error_t nraw_write(void *void_sock, const void *buf, size_t buf_size, size_t 
   if (param == NC_OPT_DO_ALL) {
     ssize_t sent_bytes = 0;
     while (sent_bytes != buf_size) {
+      if (*G_exit_flag) {
+        *bytes_written = (size_t)sent_bytes;
+        return NC_ERR_EXIT_FLAG;
+      }
       ssize_t bwritten = send(sock->fd, buf, buf_size, 0);
       nc_error_t err = __internal_nraw_convert_errno();
       if (bwritten == -1 && err != NC_ERR_TIMED_OUT && err != NC_ERR_WOULD_BLOCK) {
-        *bytes_written = sent_bytes;
+        *bytes_written = (size_t)sent_bytes;
         return err;
       }
       sent_bytes += bwritten;
@@ -136,6 +143,10 @@ nc_error_t nraw_read(void *void_sock, void *buf, size_t buf_size, size_t *bytes_
   if (param == NC_OPT_DO_ALL) {
     ssize_t bytes_recv = 0;
     while (bytes_recv != buf_size) {
+      if (*G_exit_flag) {
+        *bytes_read = (size_t)bytes_recv;
+        return NC_ERR_EXIT_FLAG;
+      }
       ssize_t bread = recv(sock->fd, buf, buf_size, 0);
       nc_error_t err = __internal_nraw_convert_errno();
       if (bread == -1 && err != NC_ERR_TIMED_OUT && err != NC_ERR_WOULD_BLOCK) {
@@ -167,7 +178,7 @@ nc_error_t nraw_setopt(void *void_sock, nc_option_t option, void *data, size_t d
       if (setsockopt(sock->fd, SOL_SOCKET, SO_RCVTIMEO, (struct timeval *)&timeout, sizeof(timeout)) == -1) {
         return NC_ERR_SET_OPT_FAIL;
       }
-      return NC_ERR_GOOD;
+      break;
     } case NC_OPT_SEND_TIMEOUT: {
       struct timeval timeout;
       timeout.tv_sec = ((ns_timeval_t*)data)->sec;
@@ -175,8 +186,11 @@ nc_error_t nraw_setopt(void *void_sock, nc_option_t option, void *data, size_t d
       if (setsockopt(sock->fd, SOL_SOCKET, SO_SNDTIMEO, (struct timeval *)&timeout, sizeof(timeout)) == -1) {
         return NC_ERR_SET_OPT_FAIL;
       }
-      return NC_ERR_GOOD;
-    } default: return NC_ERR_NULL;
+      break;
+    } case NC_OPT_EXIT_FLAG:
+      G_exit_flag = (nc_exit_flag_t*)data;
+      break;
+    default: return NC_ERR_NULL;
   }
   return NC_ERR_GOOD;
 }
@@ -203,7 +217,11 @@ nc_error_t nraw_getopt(void *void_sock, nc_option_t option, void *null_data, siz
       nsts->sec = timeout.tv_sec;
       nsts->usec = timeout.tv_usec;
       return NC_ERR_GOOD;
-    } default: return NC_ERR_NULL;
+    } case NC_OPT_EXIT_FLAG:
+      nc_exit_flag_t** todata = (nc_exit_flag_t**)null_data;
+      *todata = G_exit_flag;
+      break;
+    default: return NC_ERR_NULL;
   }
   return NC_ERR_GOOD;
 }

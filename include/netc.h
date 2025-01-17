@@ -9,6 +9,7 @@
 #include <stdint.h>
 #include <string.h>
 #include <time.h>
+#include <signal.h> // sig_atomic_t
 
 // STATIC
 // Types
@@ -31,6 +32,7 @@
   #define NC_ERR_SET_OPT_FAIL ((nc_error_t)13)
   #define NC_ERR_INVL_CTX ((nc_error_t)14)
   #define NC_ERR_BAD_HANDSHAKE ((nc_error_t)15)
+  #define NC_ERR_EXIT_FLAG ((nc_error_t)16)
   const char *nstrerr(nc_error_t); // return stringed error
 // OPTIONS
   #define NC_OPT_NULL         ((nc_option_t)0)
@@ -47,7 +49,11 @@
       time_t sec; // seconds
       time_t usec; // micro seconds
     } ns_timeval_t;
-  #define NC_OPT_DO_ALL ((nc_option_t)10)
+  #define NC_OPT_EXIT_FLAG ((nc_option_t)10)
+    typedef sig_atomic_t nc_exit_flag_t;
+    #define NC_EXIT 1
+    #define NC_NO_EXIT 0
+  #define NC_OPT_DO_ALL ((nc_option_t)11)
 // ------------ wrapper api ------------ // 
 #define NCSOCKET void
 struct nc_socket_t {

@@ -1,7 +1,7 @@
 #include <netc.h>
 #include <ncsrc/tls_src.h>
 
-#include <ncsrc/posix_src.h>
+#include <ncsrc/raw_src.h>
 #include <openssl/ssl.h>
 
 // socket creation
