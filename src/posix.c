@@ -113,21 +113,21 @@ nc_error_t nraw_close(void *void_sock) {
 nc_error_t nraw_write(void *void_sock, const void *buf, size_t buf_size, size_t *bytes_written, nc_option_t param) {
   nc_raw_socket_t *sock = (nc_raw_socket_t*)void_sock;
   if (param == NC_OPT_DO_ALL) {
-    ssize_t sent_bytes = 0;
-    while (sent_bytes != buf_size) {
+    size_t sent_bytes = 0;
+    while (sent_bytes < buf_size) {
       if (*G_exit_flag) {
-        *bytes_written = (size_t)sent_bytes;
+        *bytes_written = sent_bytes;
         return NC_ERR_EXIT_FLAG;
       }
-      ssize_t bwritten = send(sock->fd, buf, buf_size, 0);
+      ssize_t bwritten = send(sock->fd, buf, buf_size - sent_bytes, 0);
       nc_error_t err = __internal_nraw_convert_errno();
       if (bwritten == -1 && err != NC_ERR_TIMED_OUT && err != NC_ERR_WOULD_BLOCK) {
-        *bytes_written = (size_t)sent_bytes;
+        *bytes_written = sent_bytes;
         return err;
       }
       sent_bytes += bwritten;
     }
-    *bytes_written = (size_t)sent_bytes;
+    *bytes_written = sent_bytes;
   } else {
     ssize_t bwrite = send(sock->fd, buf, buf_size, 0);
     if (bwrite == -1) {
@@ -141,13 +141,13 @@ nc_error_t nraw_write(void *void_sock, const void *buf, size_t buf_size, size_t 
 nc_error_t nraw_read(void *void_sock, void *buf, size_t buf_size, size_t *bytes_read, nc_option_t param) {
   nc_raw_socket_t *sock = (nc_raw_socket_t*)void_sock;
   if (param == NC_OPT_DO_ALL) {
-    ssize_t bytes_recv = 0;
-    while (bytes_recv != buf_size) {
+    size_t bytes_recv = 0;
+    while (bytes_recv < buf_size) {
       if (*G_exit_flag) {
-        *bytes_read = (size_t)bytes_recv;
+        *bytes_read = bytes_recv;
         return NC_ERR_EXIT_FLAG;
       }
-      ssize_t bread = recv(sock->fd, buf, buf_size, 0);
+      ssize_t bread = recv(sock->fd, buf, buf_size - bytes_recv, 0);
       nc_error_t err = __internal_nraw_convert_errno();
       if (bread == -1 && err != NC_ERR_TIMED_OUT && err != NC_ERR_WOULD_BLOCK) {
         *bytes_read = bytes_recv;
@@ -155,7 +155,7 @@ nc_error_t nraw_read(void *void_sock, void *buf, size_t buf_size, size_t *bytes_
       }
       bytes_recv += bread;
     }
-    *bytes_read = (size_t)bytes_recv;
+    *bytes_read = bytes_recv;
   } else {
     ssize_t bread = recv(sock->fd, buf, buf_size, 0);
     if (bread == -1) {
