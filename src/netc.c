@@ -1,26 +1,6 @@
 #include <netc.h>
+#include <stdbool.h>
 
-// deletion
-nc_error_t nclose(nc_socket_t *sock) { return sock->close(sock->sock); }
-
-// connect
-nc_error_t nopen(nc_socket_t *sock, const char *ip) { return sock->open(sock->sock, ip); }
-
-// functionality
-nc_error_t nwrite(nc_socket_t *sock, const void *buf, size_t bufsize, size_t *bytes_written, nc_option_t opt) {
-  return sock->write(sock->sock, buf, bufsize, bytes_written, opt);
-}
-nc_error_t nread(nc_socket_t *sock, void *buf, size_t bufsize, size_t *bytes_read, nc_option_t opt) {
-  return sock->read(sock->sock, buf, bufsize, bytes_read, opt);
-}
-
-// options
-nc_error_t nsetopt(nc_socket_t *sock, nc_option_t opt, void *data, size_t data_size) {
-  return sock->setopt(sock->sock, opt, data, data_size);
-}
-nc_error_t ngetopt(nc_socket_t *sock, nc_option_t opt, void *data, size_t data_size) {
-  return sock->getopt(sock->sock, opt, data, data_size);
-}
 static const char *nstrerrarr[] = {
   "No error spotted",
   "Couldn't parse error",
@@ -38,6 +18,16 @@ static const char *nstrerrarr[] = {
   "Option couldn't be set",
   "Context couldn't be created",
   "Couldn't complete handshake",
-  "Exit flag was set before completion"
+  "Exit flag was set before completion",
+  "The accepted ipv6 adress in the accept function is larger than a uint64_t",
+  "No Data Available",
+  "SSL CTX manager couldn't use ssl certificate"
+  "SSL CTX manager couldn't use private key certificate"
+  "SSL CTX manager completed a check of private key and found it dubious"
+  "PLACEHOLDER 0", // to handle programming mistakes
+  "PLACEHOLDER 1",
+  "PLACEHOLDER 2",
+  "PLACEHOLDER 3",
+  "PLACEHOLDER 4"
 };
 const char *nstrerr(nc_error_t err) { return nstrerrarr[err]; }

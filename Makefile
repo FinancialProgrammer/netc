@@ -21,9 +21,12 @@ libnetc.so: ${OBJECTS} openssl/libssl.a openssl/libcrypto.a
 libnetc.a: ${OBJECTS} openssl/libssl.a openssl/libcrypto.a
 	ar rcs $@ ${OBJECTS} openssl/libssl.a openssl/libcrypto.a
 
-install: ${INCLS} libnetc.so
+linux_install: ${INCLS} libnetc.so
 	sudo cp -r include/* /usr/local/include/
 	sudo cp libnetc.so /usr/local/lib/
 
 clean:
-	rm src/*.o libnetc.so libnetc.a
+	rm src/*.o src/raw/*.o src/ssl/*.o
+
+cleanlib:
+	rm libnetc.so libnetc.a

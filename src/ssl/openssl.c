@@ -1,0 +1,181 @@
+#include <netc.h>
+#include <openssl/ssl.h>
+
+#include "src/raw/internalraw.h"
+
+const char *G_cert_file = NULL;
+const char *G_privkey_file = NULL;
+
+// socket creation
+nc_error_t ntls_socket(void *void_sock, int domain, int type, int protocol) {
+  struct nc_openssl_socket *sock = (struct nc_openssl_socket*)void_sock;
+  sock->ssl = NULL;
+  sock->ctx = NULL;
+  nraw_socket(void_sock, domain, type, protocol); // cast to a raw socket which should be compatible
+  return NC_ERR_GOOD;
+}
+
+nc_error_t ntls_close(void *void_sock) {
+  struct nc_openssl_socket *sock = (struct nc_openssl_socket*)void_sock;
+  if (sock->ssl) {
+    SSL_free(sock->ssl);
+  }
+  nraw_close(void_sock);
+  if (sock->ctx) {
+    SSL_CTX_free(sock->ctx);
+  }
+  return NC_ERR_GOOD;
+}
+
+// server encryption setup in bind
+nc_error_t ntls_bind(void *void_sock, struct nc_socketaddr *addr) {
+  struct nc_openssl_socket *sock = (struct nc_openssl_socket*)void_sock;
+
+  // ctx
+  const SSL_METHOD *method = TLS_server_method(); /* Create new server-method instance */
+  sock->ctx = SSL_CTX_new(method);
+  if (sock->ctx == NULL) { return NC_ERR_INVL_CTX; }
+
+  // Load the server's certificate and key
+
+  if (G_cert_file == NULL || SSL_CTX_use_certificate_file(sock->ctx, G_cert_file, SSL_FILETYPE_PEM) <= 0) {
+    SSL_CTX_free(sock->ctx);
+    return NC_ERR_CERT_FILE;
+  }
+  if (G_privkey_file == NULL || SSL_CTX_use_PrivateKey_file(sock->ctx, G_privkey_file, SSL_FILETYPE_PEM) <= 0) {
+    SSL_CTX_free(sock->ctx);
+    return NC_ERR_KEY_FILE;
+  }
+  if (!SSL_CTX_check_private_key(sock->ctx)) {
+    SSL_CTX_free(sock->ctx);
+    return NC_ERR_INVL_KEY;
+  }
+
+  // bind the raw socket
+  nc_error_t bind_err = nraw_bind(void_sock, addr);
+  if (bind_err != NC_ERR_GOOD) { return bind_err; }
+
+  return NC_ERR_GOOD;
+}
+
+// connection
+nc_error_t ntls_open(void *void_sock, struct nc_socketaddr *addr) {
+  struct nc_openssl_socket *sock = (struct nc_openssl_socket*)void_sock;
+
+  // ctx
+  const SSL_METHOD *method = TLS_client_method(); /* Create new client-method instance */
+  sock->ctx = SSL_CTX_new(method);
+  if (sock->ctx == NULL) { return NC_ERR_INVL_CTX; }
+
+  // connect
+  nc_error_t open_err = nraw_open(void_sock, addr);
+  if (open_err != NC_ERR_GOOD) { return open_err; }
+
+  // ssl
+  sock->ssl = SSL_new(sock->ctx);
+  if (sock->ssl == NULL) { return NC_ERR_MEMORY; }
+  
+  // bind fd to sock
+  SSL_set_fd(sock->ssl, sock->fd);
+
+  // set the connection state
+  SSL_set_connect_state(sock->ssl);
+  
+  // start ssl connection    
+  if (SSL_connect(sock->ssl) <= 0) {
+    return NC_ERR_BAD_HANDSHAKE;
+  }
+
+  return NC_ERR_GOOD;
+}
+
+// server functionality
+nc_error_t ntls_accept(void *void_sock, void *void_client, struct nc_socketaddr *clientaddr) {
+  struct nc_openssl_socket *sock = (struct nc_openssl_socket*)void_sock;
+  struct nc_openssl_socket *client = (struct nc_openssl_socket*)void_client;
+
+  // Accept the connection using nraw_accept
+  nc_error_t accept_err = nraw_accept(void_sock, void_client, clientaddr);
+  if (accept_err != NC_ERR_GOOD) {
+    return accept_err;
+  }
+
+  // SSL setup for the accepted client connection
+  client->ctx = sock->ctx;  // Reuse the server's SSL context
+  client->ssl = SSL_new(client->ctx);
+  if (client->ssl == NULL) {
+    return NC_ERR_MEMORY;
+  }
+
+  // Bind the new socket file descriptor to the SSL structure
+  SSL_set_fd(client->ssl, client->fd);
+
+  // Set the SSL structure to work in server mode
+  SSL_set_accept_state(client->ssl);
+
+  // Start SSL connection and perform the handshake
+  if (SSL_accept(client->ssl) <= 0) {
+    return NC_ERR_BAD_HANDSHAKE;
+  }
+
+  return NC_ERR_GOOD;
+}
+
+// functionality
+nc_error_t ntls_write(void *void_sock, const void *buf, size_t buf_size, size_t *bytes_read, nc_option_t param) {
+  struct nc_openssl_socket *sock = (struct nc_openssl_socket*)void_sock;
+  *bytes_read = SSL_write(sock->ssl, buf, buf_size);
+  return NC_ERR_GOOD;
+}
+
+nc_error_t ntls_read(void *void_sock, void *buf, size_t buf_size, size_t *bytes_read, nc_option_t param) {
+  struct nc_openssl_socket *sock = (struct nc_openssl_socket*)void_sock;
+  *bytes_read = SSL_read(sock->ssl, buf, buf_size);
+  return NC_ERR_GOOD;
+}
+
+// option
+nc_error_t ntls_setopt(void *voidsock, nc_option_t opt, const void *data, size_t datalen) {
+  if (opt == NC_OPT_CERT_FILE) {
+    G_cert_file = (const char*)data;
+    return NC_ERR_GOOD;
+  } else if (opt == NC_OPT_PRIV_KEY_FILE) {
+    G_privkey_file = (const char*)data;
+    return NC_ERR_GOOD;
+  }
+  return nraw_setopt(voidsock, opt, data, datalen);
+}
+nc_error_t ntls_getopt(void *voidsock, nc_option_t opt, void *data, size_t datalen) {
+  if (opt == NC_OPT_CERT_FILE) {
+    data = (void*)G_cert_file;
+    return NC_ERR_GOOD;
+  } else if (opt == NC_OPT_PRIV_KEY_FILE) {
+    data = (void*)G_privkey_file;
+    return NC_ERR_GOOD;
+  }
+  return nraw_getopt(voidsock, opt, data, datalen);
+}
+
+
+struct nc_functions nc_functions_openssl() {
+  struct nc_functions funcs;
+
+  funcs.socket = &ntls_socket;
+  funcs.close  = &ntls_close;
+  
+  funcs.open   = &ntls_open;
+  funcs.bind   = &ntls_bind; // updated to use the new bind function
+
+  funcs.write  = &ntls_write;
+  funcs.read   = &ntls_read;
+  
+  funcs.listen = &nraw_listen;
+  funcs.accept = &ntls_accept;
+  
+  funcs.poll   = &nraw_poll;
+  
+  funcs.setopt = &ntls_setopt;
+  funcs.getopt = &ntls_getopt;
+  
+  return funcs;
+}

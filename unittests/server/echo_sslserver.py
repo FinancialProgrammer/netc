@@ -2,8 +2,8 @@ import socket
 import ssl
 
 # Set the server address and port
-HOST = 'localhost'  # Change to '0.0.0.0' to listen on all interfaces
-PORT = 8443
+HOST = '127.0.0.1'  # Change to '0.0.0.0' to listen on all interfaces
+PORT = 10000
 
 # SSL certificate and key files
 CERT_FILE = "certs/server.crt"
