@@ -154,66 +154,83 @@ nc_error_t nraw_bind(void *voidsock, struct nc_socketaddr *addr) {
 }
 
 // write, read
-nc_error_t nraw_write(void *voidsock, const void *buf, size_t buf_size, size_t *bytes_written, nc_option_t param) {
+nc_error_t nraw_write(void *voidsock, const void *buf, size_t bufsize, size_t *bytes_written, nc_option_t param) {
   nc_socket_t *sock = (nc_socket_t*)voidsock;
+  ssize_t bwritten = 0;
+  nc_error_t err = NC_ERR_GOOD;
+
   if (param == NC_OPT_DO_ALL) {
-    size_t sent_bytes = 0;
-    while (sent_bytes < buf_size) {
+    while (bwritten < bufsize) {
+      // check the Global exit flag for better safety with infinite loops
+      // A timeout should also be possible here
       if (*G_exit_flag) {
-        *bytes_written = sent_bytes;
-        return NC_ERR_EXIT_FLAG;
+        err = NC_ERR_EXIT_FLAG;
+        break;
       }
-      ssize_t bwritten = send(sock->fd, buf, buf_size - sent_bytes, 0);
-      if (bwritten == -1 && __internal_nraw_convert_errno() != NC_ERR_TIMED_OUT && __internal_nraw_convert_errno() != NC_ERR_WOULD_BLOCK) {
-        *bytes_written = sent_bytes;
-        return __internal_nraw_convert_errno();
+
+      // send all data currently possible
+      ssize_t tmp_bwritten = send(sock->fd, buf, bufsize - bwritten, 0);
+      if (tmp_bwritten == -1 && __internal_nraw_convert_errno() != NC_ERR_TIMED_OUT && __internal_nraw_convert_errno() != NC_ERR_WOULD_BLOCK) {
+        err = __internal_nraw_convert_errno();
+        break;
       }
-      buf += bwritten;
-      sent_bytes += bwritten;
+
+      // update pointer and size left
+      buf += tmp_bwritten;
+      bwritten += tmp_bwritten;
     }
-    *bytes_written = sent_bytes;
   } else {
-    ssize_t bwrite = send(sock->fd, buf, buf_size, 0);
-    if (bwrite == -1) {
-      *bytes_written = 0;
-      return __internal_nraw_convert_errno();
+    bwritten = send(sock->fd, buf, bufsize, 0);
+    if (bwritten == -1) {
+      bwritten = 0;
+      err = __internal_nraw_convert_errno();
     }
-    *bytes_written = (size_t)bwrite;
   }
-  return NC_ERR_GOOD;
+  if (bytes_written != NULL) { *bytes_written = (size_t)bwritten; }
+  return err;
 }
-nc_error_t nraw_read(void *voidsock, void *buf, size_t buf_size, size_t *bytes_read, nc_option_t param) {
+nc_error_t nraw_read(void *voidsock, void *buf, size_t bufsize, size_t *bytes_read, nc_option_t param) {
   nc_socket_t *sock = (nc_socket_t*)voidsock;
+  ssize_t bread = 0;
+  nc_error_t err = NC_ERR_GOOD;
+
   if (param == NC_OPT_DO_ALL) {
-    size_t bytes_recv = 0;
-    while (bytes_recv < buf_size) {
+    while (bread < bufsize) {
+      // check the Global exit flag for better safety with infinite loops
+      // A timeout should also be possible here
       if (*G_exit_flag) {
-        *bytes_read = bytes_recv;
-        return NC_ERR_EXIT_FLAG;
+        err = NC_ERR_EXIT_FLAG;
+        break;
       }
-      ssize_t bread = recv(sock->fd, buf, buf_size - bytes_recv, 0);
-      if (bread == -1 && __internal_nraw_convert_errno() != NC_ERR_TIMED_OUT && __internal_nraw_convert_errno() != NC_ERR_WOULD_BLOCK) {
-        *bytes_read = bytes_recv;
-        return __internal_nraw_convert_errno();
+
+      // send all data currently possible
+      ssize_t tmp_bread = recv(sock->fd, buf, bufsize - bread, 0);
+      if (tmp_bread == -1 && __internal_nraw_convert_errno() != NC_ERR_TIMED_OUT && __internal_nraw_convert_errno() != NC_ERR_WOULD_BLOCK) {
+        err = __internal_nraw_convert_errno();
+        break;
       }
-      buf += bread;
-      bytes_recv += bread;
+
+      // update pointer and size left
+      buf += tmp_bread;
+      bread += tmp_bread;
     }
-    *bytes_read = bytes_recv;
   } else if (param == NC_OPT_MSG_PEAK) {
-    ssize_t brecvd = recv(sock->fd, buf, buf_size, MSG_PEEK); 
-    if (brecvd == -1) {
-      return __internal_nraw_convert_errno();
-    }
-    *bytes_read = brecvd;
-  } else {
-    ssize_t bread = recv(sock->fd, buf, buf_size, 0);
+    bread = recv(sock->fd, buf, bufsize, MSG_PEEK); 
     if (bread == -1) {
-      *bytes_read = 0;
-      return __internal_nraw_convert_errno();
+      bread = 0;
+      err = __internal_nraw_convert_errno();
     }
-    *bytes_read = (size_t)bread;
+  } else {
+    bread = recv(sock->fd, buf, bufsize, 0);
+    if (bread == -1) {
+      bread = 0;
+      err = __internal_nraw_convert_errno();
+    }
   }
+
+  if (bytes_read != NULL) { *bytes_read = (size_t)bread; }
+  return err;
+
   return NC_ERR_GOOD;
 }
 
@@ -231,10 +248,15 @@ nc_error_t nraw_accept(void *voidsock, void *voidclient, struct nc_socketaddr *c
   nc_socket_t *sock = (nc_socket_t*)voidsock;
   nc_socket_t *client = (nc_socket_t*)voidclient;
 
-  socklen_t addrlen = sizeof(clientaddr->__internal_addr);
-  int fd = accept(sock->fd, (struct sockaddr*)&clientaddr->__internal_addr, &addrlen);
+  struct nc_socketaddr addr;
+  socklen_t addrlen = sizeof(addr);
+  int fd = accept(sock->fd, (struct sockaddr*)&addr, &addrlen);
   if (fd == -1) {
     return __internal_nraw_convert_errno();
+  }
+
+  if (clientaddr != NULL) {
+    *clientaddr = addr;
   }
 
   // Copy client fd

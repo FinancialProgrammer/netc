@@ -122,15 +122,86 @@ nc_error_t ntls_accept(void *void_sock, void *void_client, struct nc_socketaddr 
 }
 
 // functionality
-nc_error_t ntls_write(void *void_sock, const void *buf, size_t buf_size, size_t *bytes_read, nc_option_t param) {
-  struct nc_openssl_socket *sock = (struct nc_openssl_socket*)void_sock;
-  *bytes_read = SSL_write(sock->ssl, buf, buf_size);
-  return NC_ERR_GOOD;
-}
+// write, read
+nc_error_t ntls_write(void *voidsock, const void *buf, size_t bufsize, size_t *bytes_written, nc_option_t param) {
+  struct nc_openssl_socket *sock = (struct nc_openssl_socket*)voidsock;
+  ssize_t bwritten = 0;
+  nc_error_t err = NC_ERR_GOOD;
 
-nc_error_t ntls_read(void *void_sock, void *buf, size_t buf_size, size_t *bytes_read, nc_option_t param) {
-  struct nc_openssl_socket *sock = (struct nc_openssl_socket*)void_sock;
-  *bytes_read = SSL_read(sock->ssl, buf, buf_size);
+  if (param == NC_OPT_DO_ALL) {
+    while (bwritten < bufsize) {
+      // check the Global exit flag for better safety with infinite loops
+      // A timeout should also be possible here
+      if (*G_exit_flag) {
+        err = NC_ERR_EXIT_FLAG;
+        break;
+      }
+
+      // send all data currently possible
+      ssize_t tmp_bwritten = SSL_write(sock->ssl, buf, bufsize - bwritten);
+      if (tmp_bwritten == -1 && __internal_nraw_convert_errno() != NC_ERR_TIMED_OUT && __internal_nraw_convert_errno() != NC_ERR_WOULD_BLOCK) {
+        err = __internal_nraw_convert_errno();
+        break;
+      }
+
+      // update pointer and size left
+      buf += tmp_bwritten;
+      bwritten += tmp_bwritten;
+    }
+  } else {
+    bwritten = SSL_write(sock->ssl, buf, bufsize);
+    if (bwritten == -1) {
+      bwritten = 0;
+      err = __internal_nraw_convert_errno();
+    }
+  }
+  if (bytes_written != NULL) { *bytes_written = (size_t)bwritten; }
+  return err;
+}
+nc_error_t ntls_read(void *voidsock, void *buf, size_t bufsize, size_t *bytes_read, nc_option_t param) {
+  struct nc_openssl_socket *sock = (struct nc_openssl_socket*)voidsock;
+  ssize_t bread = 0;
+  nc_error_t err = NC_ERR_GOOD;
+
+  if (param == NC_OPT_DO_ALL) {
+    while (bread < bufsize) {
+      // check the Global exit flag for better safety with infinite loops
+      // A timeout should also be possible here
+      if (*G_exit_flag) {
+        err = NC_ERR_EXIT_FLAG;
+        break;
+      }
+
+      // send all data currently possible
+      ssize_t tmp_bread = SSL_read(sock->ssl, buf, bufsize - bread);
+      if (tmp_bread == -1 && __internal_nraw_convert_errno() != NC_ERR_TIMED_OUT && __internal_nraw_convert_errno() != NC_ERR_WOULD_BLOCK) {
+        err = __internal_nraw_convert_errno();
+        break;
+      }
+
+      // update pointer and size left
+      buf += tmp_bread;
+      bread += tmp_bread;
+    }
+  } else if (param == NC_OPT_MSG_PEAK) {
+    // not actually requesting data, this should be fine
+    // but definitly test this
+    bread = recv(sock->fd, buf, bufsize, MSG_PEEK); 
+    if (bread == -1) {
+      bread = 0;
+      err = __internal_nraw_convert_errno();
+    }
+  } else {
+    bread = SSL_read(sock->ssl, buf, bufsize);
+    if (bread == -1) {
+      bread = 0;
+      err = __internal_nraw_convert_errno();
+    }
+  }
+
+  if (bytes_read != NULL) { *bytes_read = (size_t)bread; }
+  return err;
+
   return NC_ERR_GOOD;
 }
 

@@ -21,6 +21,8 @@ int main() {
     return 1;
   }
 
+  int opt = 1;
+  err = G_sockfuncs.setopt(&sock, NC_OPT_REUSEADDR, &opt, sizeof(opt));
   err = G_sockfuncs.setopt(&sock, NC_OPT_CERT_FILE, "./server/certs/server.crt", 0);
   err = G_sockfuncs.setopt(&sock, NC_OPT_PRIV_KEY_FILE, "./server/certs/server.key", 0);
 

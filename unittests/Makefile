@@ -10,4 +10,4 @@ all: connect.out connect.ssl.out server.out server.ssl.out
 	${CC} -o $@ $< ${LIBS}
 
 clean:
-	rm *.out *.outi
+	rm *.out
