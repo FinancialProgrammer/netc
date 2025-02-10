@@ -8,14 +8,8 @@ set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fPIC -O3 -Ofast")
 include_directories(include)
 
 # Find source files
-set(SRCS src/netc.c)
+set(SRCS src/netc.c src/raw/raw.c)
 set(LIBS)
-
-if () # windows
-  list(APPEND SRCS src/raw/win.c)  
-else() # assume posix
-  list(APPEND SRCS src/raw/posix.c)
-endif()
 
 # Option to link with OpenSSL
 option(USE_OPENSSL "Link with OpenSSL" ON)

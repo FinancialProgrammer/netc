@@ -139,8 +139,8 @@ nc_error_t ntls_write(void *voidsock, const void *buf, size_t bufsize, size_t *b
 
       // send all data currently possible
       ssize_t tmp_bwritten = SSL_write(sock->ssl, buf, bufsize - bwritten);
-      if (tmp_bwritten == -1 && __internal_nraw_convert_errno() != NC_ERR_TIMED_OUT && __internal_nraw_convert_errno() != NC_ERR_WOULD_BLOCK) {
-        err = __internal_nraw_convert_errno();
+      if (tmp_bwritten == -1 && __nc_convert_os_error() != NC_ERR_TIMED_OUT && __nc_convert_os_error() != NC_ERR_WOULD_BLOCK) {
+        err = __nc_convert_os_error();
         break;
       }
 
@@ -152,7 +152,7 @@ nc_error_t ntls_write(void *voidsock, const void *buf, size_t bufsize, size_t *b
     bwritten = SSL_write(sock->ssl, buf, bufsize);
     if (bwritten == -1) {
       bwritten = 0;
-      err = __internal_nraw_convert_errno();
+      err = __nc_convert_os_error();
     }
   }
   if (bytes_written != NULL) { *bytes_written = (size_t)bwritten; }
@@ -174,8 +174,8 @@ nc_error_t ntls_read(void *voidsock, void *buf, size_t bufsize, size_t *bytes_re
 
       // send all data currently possible
       ssize_t tmp_bread = SSL_read(sock->ssl, buf, bufsize - bread);
-      if (tmp_bread == -1 && __internal_nraw_convert_errno() != NC_ERR_TIMED_OUT && __internal_nraw_convert_errno() != NC_ERR_WOULD_BLOCK) {
-        err = __internal_nraw_convert_errno();
+      if (tmp_bread == -1 && __nc_convert_os_error() != NC_ERR_TIMED_OUT && __nc_convert_os_error() != NC_ERR_WOULD_BLOCK) {
+        err = __nc_convert_os_error();
         break;
       }
 
@@ -189,13 +189,13 @@ nc_error_t ntls_read(void *voidsock, void *buf, size_t bufsize, size_t *bytes_re
     bread = recv(sock->fd, buf, bufsize, MSG_PEEK); 
     if (bread == -1) {
       bread = 0;
-      err = __internal_nraw_convert_errno();
+      err = __nc_convert_os_error();
     }
   } else {
     bread = SSL_read(sock->ssl, buf, bufsize);
     if (bread == -1) {
       bread = 0;
-      err = __internal_nraw_convert_errno();
+      err = __nc_convert_os_error();
     }
   }
 

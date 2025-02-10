@@ -13,12 +13,6 @@
   #include <netdb.h>
 #endif
 
-struct nc_socketaddr {
-  struct sockaddr_storage __internal_addr;
-  size_t __internal_addrlen;
-};
-nc_error_t __internal_nraw_convert_errno();
-
 extern int G_default_exit_flag;
 extern int *G_exit_flag;
 

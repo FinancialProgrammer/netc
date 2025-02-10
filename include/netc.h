@@ -1,3 +1,6 @@
+// --- TODOS --- //
+// TODO: An option for fragmenting udp messages should be an option. Only problem is a global socket memory would have to exist
+// TODO: UDP openssl can maybe be provided? logically no right?
 #ifndef __NETC_INCLUDED
 #define __NETC_INCLUDED
 
@@ -11,6 +14,35 @@
 #include <signal.h> // sig_atomic_t
 // #include <string.h>
 
+
+#ifdef _WIN32
+  #include <winsock2.h>
+  #include <ws2tcpip.h>
+
+  #define NCRAWSOCKET SOCKET
+  #define NCINVALID_SOCKET INVALID_SOCKET
+  #define NCRAW_INIT() { WSADATA wsaData; WSAStartup(MAKEWORD(2, 2), &wsaData); }
+  #define NCRAW_DEINIT() WSACleanup()
+
+  // for bsd style cross compatible sockets
+  #define NCCLOSESOCKET closesocket
+#else // Assume POSIX
+  #include <sys/types.h>
+  #include <sys/socket.h>
+  #include <netinet/in.h>
+  #include <arpa/inet.h>
+  #include <netdb.h>
+  #include <unistd.h>
+
+  #define NCRAW_SOCKET int
+  #define NC_BAD_SOCKET -1
+  #define NCRAW_INIT() ((void)0) // No initialization needed for POSIX
+  #define NCRAW_DEINIT() ((void)0) // No cleanup needed for POSIX
+
+  // for bsd style cross compatible sockets
+  #define NCCLOSESOCKET close
+#endif
+
 // --- STATIC --- //
 // Types
   typedef int nc_error_t;
@@ -21,6 +53,7 @@
     time_t usec; // micro seconds
   };
 // ERRORS
+  nc_error_t __nc_convert_os_error();
   #define NC_ERR_GOOD                    ((nc_error_t)0)
   #define NC_ERR_NULL                    ((nc_error_t)1)
   #define NC_ERR_MEMORY                  ((nc_error_t)2)
@@ -52,6 +85,8 @@
   #define NC_OPT_DGRAM        ((nc_option_t)4)
   #define NC_OPT_TCP          ((nc_option_t)5)
   #define NC_OPT_UDP          ((nc_option_t)6)
+  // socket address
+  #define NC_OPT_INADDR_ANY  ((nc_option_t)7)
   // setopt / getopt
   #define NC_OPT_RECV_TIMEOUT  ((nc_option_t)100)
   #define NC_OPT_SEND_TIMEOUT  ((nc_option_t)101)
@@ -65,47 +100,33 @@
   #define NC_OPT_POLLIN   ((nc_option_t)201)
 // --- END(STATIC) --- //
 
-/* TODO (Windows OS)
-* since windows can't keep a standard and SOCKET could change at any time,
-* it is probably best to include the windows api if windows is detected.
-* Kind of annoying but an accurate description for windows programmers.
-* When i actually start implementing windows i will worry about this.
-*/
-
 // --- Socket Structures --- //
-  struct nc_socketaddr; // forward declare
-  size_t netc_sizeof_socketaddr();
-  #ifdef __NETC_EXPOSED_SOCKETADDR
-    #ifdef _WIN32
-      #include <winsock2.h>
-      #include <ws2tcpip.h>
-    #else
-      #include <sys/types.h>
-      #include <sys/socket.h>
-      #include <netinet/in.h>
-      #include <arpa/inet.h>
-      #include <netdb.h>
-    #endif
-    struct nc_socketaddr {
-      struct sockaddr_storage __internal_addr;
-      size_t __internal_addrlen;
-    };
-  #endif
-  #define NCSOCKET struct nc_openssl_socket // with more sockets this will change to some char[64]
+  // socket addr  
+  struct nc_socketaddr {
+    struct sockaddr_storage __internal_addr;
+    socklen_t __internal_addrlen;
+  };
+  typedef struct nc_socketaddr nc_socketaddr_t;
+
+  // socket
+  #define NCSOCKET nc_socket_storage_t
   struct nc_openssl_socket {
     int fd;
+    // openssl specific
     void *ssl;
     void *ctx;
   };
-  struct nc_socket {
-    int fd;
-  };
+  typedef struct nc_openssl_socket nc_openssl_socket_t;
+  typedef NCRAW_SOCKET nc_socket_t;
+  typedef nc_openssl_socket_t nc_socket_storage_t;
+  
+  // poll
   struct nc_sockpoll {
     int   fd;         /* file descriptor */
     short events;     /* requested events */
     short revents;    /* returned events */
   };
-  typedef struct nc_socket nc_socket_t;
+  typedef struct nc_sockpoll nc_sockpoll_t;
 // --- END(Socket Structures) --- //
 
 // --- Socket Functionality --- //
@@ -113,14 +134,16 @@
     nc_error_t (*socket)(void*, int domain, int type, int protocol);
     nc_error_t (*close)(void*);
 
-    nc_error_t (*open)(void*, struct nc_socketaddr*);
-    nc_error_t (*bind)(void*, struct nc_socketaddr*);
+    nc_error_t (*open)(void*, nc_socketaddr_t*);
+    nc_error_t (*bind)(void*, nc_socketaddr_t*);
 
     nc_error_t (*write)(void*, const void*, size_t, size_t*, nc_option_t);
     nc_error_t (*read)(void*, void*, size_t, size_t*, nc_option_t);
+    nc_error_t (*writeto)(void*, nc_socketaddr_t*, const void*, size_t, size_t*, nc_option_t);
+    nc_error_t (*readfrom)(void*, nc_socketaddr_t*, void*, size_t, size_t*, nc_option_t);
 
     nc_error_t (*listen)(void*, int);
-    nc_error_t (*accept)(void*, void*, struct nc_socketaddr*);
+    nc_error_t (*accept)(void*, void*, nc_socketaddr_t*);
 
     nc_error_t (*poll)(struct nc_sockpoll *polled, size_t polled_len, int timeout, nc_option_t param);
 
@@ -131,11 +154,16 @@
   struct nc_functions nc_functions_openssl();
 // --- END(Socket Functionality) --- //
 
+// --- Other Socket Functionality --- //
+  nc_error_t netc_writeto_frag(void *sock, nc_socketaddr_t*, const void*, size_t, size_t*, nc_option_t, size_t fragments);
+  nc_error_t netc_readto_frag(void *sock, nc_socketaddr_t*, const void*, size_t, size_t*, nc_option_t, size_t fragments);
+// --- END(Other Socket Functionality) --- //
+
 // --- Netowrking Auxiliary --- //
-  nc_error_t netc_resolve_addrV6(struct nc_socketaddr *addr, const char *ipaddr, uint16_t port, uint32_t flowinfo, uint32_t scope_id);
-  nc_error_t netc_resolve_ipV6(struct nc_socketaddr *ncsockaddr, const char *ipaddr, uint16_t port, uint32_t flowinfo, uint32_t scope_id);
-  nc_error_t netc_resolve_addrV4(struct nc_socketaddr *addr, const char *ipaddr, uint16_t port);
-  nc_error_t netc_resolve_ipV4(struct nc_socketaddr *ncsockaddr, const char *ipaddr, uint16_t port);
+  nc_error_t netc_resolve_addrV6(nc_socketaddr_t *addr, nc_option_t opt, const char *ipaddr, uint16_t port, uint32_t flowinfo, uint32_t scope_id);
+  nc_error_t netc_resolve_ipV6(nc_socketaddr_t *ncsockaddr, const char *ipaddr, uint16_t port, uint32_t flowinfo, uint32_t scope_id);
+  nc_error_t netc_resolve_addrV4(nc_socketaddr_t *addr, nc_option_t opt, const char *ipaddr, uint16_t port);
+  nc_error_t netc_resolve_ipV4(nc_socketaddr_t *ncsockaddr, const char *ipaddr, uint16_t port);
 // --- END(Netowrking Auxiliary) --- // 
 
 // --- Netc Auxiliary --- //

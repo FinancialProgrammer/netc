@@ -19,7 +19,16 @@
 #include <string.h>
 
 #include "src/raw/internalraw.h"
-  nc_error_t __internal_nraw_convert_errno() {
+
+int G_default_exit_flag = 0;
+int *G_exit_flag = &G_default_exit_flag;
+
+#ifdef _WIN32
+  nc_error_t __nc_convert_os_error() {
+    return NC_ERR_NULL; // Not Implemented Yet
+  }
+#else
+  nc_error_t __nc_convert_os_error() {
     switch (errno) {
       case EADDRNOTAVAIL: return NC_ERR_INVALID_ADDRESS; // Cannot assign requested address 
       case ECONNREFUSED: return NC_ERR_CONNECTION_REFUSED; // Connection refused 
@@ -35,13 +44,10 @@
         return NC_ERR_NULL;
     };
   }
-  size_t netc_sizeof_socketaddr() { return sizeof(struct nc_socketaddr); }
-  int G_default_exit_flag = 0;
-  int *G_exit_flag = &G_default_exit_flag;
-// END
+#endif
 
 // --- Auxiliary Networking Functions --- //
-  nc_error_t netc_resolve_addrV6(struct nc_socketaddr *addr, const char *ipaddr, uint16_t port, uint32_t flowinfo, uint32_t scope_id) {
+  nc_error_t netc_resolve_addrV6(struct nc_socketaddr *addr, nc_option_t opt, const char *ipaddr, uint16_t port, uint32_t flowinfo, uint32_t scope_id) {
     struct sockaddr_in6 *address = (struct sockaddr_in6 *)&addr->__internal_addr;
     memset(address, 0, sizeof(*address));
     address->sin6_family = AF_INET6;
@@ -49,13 +55,18 @@
     address->sin6_flowinfo = htonl(flowinfo);
     address->sin6_scope_id = htonl(scope_id);
 
-    if (inet_pton(AF_INET6, ipaddr, &address->sin6_addr) != 1) {
-      return NC_ERR_INVALID_ADDRESS;
+    if (opt == NC_OPT_INADDR_ANY) {
+      address->sin6_addr = in6addr_any;
+    } else {
+      if (inet_pton(AF_INET6, ipaddr, &address->sin6_addr) != 1) {
+        return NC_ERR_INVALID_ADDRESS;
+      }
     }
     addr->__internal_addrlen = sizeof(struct sockaddr_in6);
     return NC_ERR_GOOD;
   }
   nc_error_t netc_resolve_ipV6(struct nc_socketaddr *ncsockaddr, const char *ipaddr, uint16_t port, uint32_t flowinfo, uint32_t scope_id) {
+    struct sockaddr_in6 *address = (struct sockaddr_in6 *)&ncsockaddr->__internal_addr;
     struct addrinfo hints, *res;
     memset(&hints, 0, sizeof(hints));
     hints.ai_family = AF_INET6;
@@ -64,7 +75,6 @@
       return NC_ERR_INVALID_ADDRESS;
     }
 
-    struct sockaddr_in6 *address = (struct sockaddr_in6 *)&ncsockaddr->__internal_addr;
     memset(address, 0, sizeof(*address));
     address->sin6_family = AF_INET6;
     address->sin6_addr = ((struct sockaddr_in6 *)res->ai_addr)->sin6_addr;
@@ -76,16 +86,19 @@
 
     return NC_ERR_GOOD;
   }
-  nc_error_t netc_resolve_addrV4(struct nc_socketaddr *addr, const char *ipaddr, uint16_t port) {
+  nc_error_t netc_resolve_addrV4(struct nc_socketaddr *addr, nc_option_t opt, const char *ipaddr, uint16_t port) {
     struct sockaddr_in *address = (struct sockaddr_in *)&addr->__internal_addr;
     memset(address, 0, sizeof(*address));
     address->sin_family = AF_INET;
     address->sin_port = htons(port);
 
-    if (inet_pton(AF_INET, ipaddr, &address->sin_addr) != 1) {
-      return NC_ERR_INVALID_ADDRESS;
+    if (opt == NC_OPT_INADDR_ANY) {
+      address->sin_addr.s_addr = INADDR_ANY;
+    } else {
+      if (inet_pton(AF_INET, ipaddr, &address->sin_addr) != 1) {
+        return NC_ERR_INVALID_ADDRESS;
+      }
     }
-
     addr->__internal_addrlen = sizeof(struct sockaddr_in);
     return NC_ERR_GOOD;
   }
@@ -115,21 +128,21 @@
 nc_error_t nraw_socket(void *voidsock, int domain, int type, int protocol) {
   nc_socket_t *sock = (nc_socket_t*)voidsock;
 
-  sock->fd = socket(
+  *sock = socket(
     (domain == NC_OPT_IPV6) ? AF_INET6 : AF_INET, // default ipv4
     (type == NC_OPT_DGRAM) ? SOCK_DGRAM : SOCK_STREAM, // default tcp (?)
     (protocol == NC_OPT_UDP) ? IPPROTO_UDP : IPPROTO_TCP // default tcp
   );
 
-  if (sock->fd == NC_INVL_RAW_SOCK) {
-    return __internal_nraw_convert_errno();
+  if (*sock == NC_INVL_RAW_SOCK) {
+    return __nc_convert_os_error();
   }
 
   return NC_ERR_GOOD;
 }
 nc_error_t nraw_close(void *voidsock) { 
   nc_socket_t *sock = (nc_socket_t*)voidsock;
-  close(sock->fd);
+  NCCLOSESOCKET(*sock);
   return NC_ERR_GOOD; 
 }
 
@@ -137,8 +150,8 @@ nc_error_t nraw_close(void *voidsock) {
 nc_error_t nraw_open(void *voidsock, struct nc_socketaddr *addr) {
   nc_socket_t *sock = (nc_socket_t*)voidsock;
 
-  if (connect(sock->fd, (struct sockaddr*)&addr->__internal_addr, addr->__internal_addrlen) == -1) {
-    return __internal_nraw_convert_errno(); 
+  if (connect(*sock, (struct sockaddr*)&addr->__internal_addr, addr->__internal_addrlen) == -1) {
+    return __nc_convert_os_error(); 
   }
 
   return NC_ERR_GOOD;
@@ -146,8 +159,8 @@ nc_error_t nraw_open(void *voidsock, struct nc_socketaddr *addr) {
 nc_error_t nraw_bind(void *voidsock, struct nc_socketaddr *addr) {
   nc_socket_t *sock = (nc_socket_t*)voidsock;
 
-  if (bind(sock->fd, (struct sockaddr*)&addr->__internal_addr, addr->__internal_addrlen) == -1) {
-    return __internal_nraw_convert_errno();
+  if (bind(*sock, (struct sockaddr*)&addr->__internal_addr, addr->__internal_addrlen) == -1) {
+    return __nc_convert_os_error();
   }
 
   return NC_ERR_GOOD;
@@ -169,9 +182,9 @@ nc_error_t nraw_write(void *voidsock, const void *buf, size_t bufsize, size_t *b
       }
 
       // send all data currently possible
-      ssize_t tmp_bwritten = send(sock->fd, buf, bufsize - bwritten, 0);
-      if (tmp_bwritten == -1 && __internal_nraw_convert_errno() != NC_ERR_TIMED_OUT && __internal_nraw_convert_errno() != NC_ERR_WOULD_BLOCK) {
-        err = __internal_nraw_convert_errno();
+      ssize_t tmp_bwritten = send(*sock, buf, bufsize - bwritten, 0);
+      if (tmp_bwritten == -1 && __nc_convert_os_error() != NC_ERR_TIMED_OUT && __nc_convert_os_error() != NC_ERR_WOULD_BLOCK) {
+        err = __nc_convert_os_error();
         break;
       }
 
@@ -180,10 +193,10 @@ nc_error_t nraw_write(void *voidsock, const void *buf, size_t bufsize, size_t *b
       bwritten += tmp_bwritten;
     }
   } else {
-    bwritten = send(sock->fd, buf, bufsize, 0);
+    bwritten = send(*sock, buf, bufsize, 0);
     if (bwritten == -1) {
       bwritten = 0;
-      err = __internal_nraw_convert_errno();
+      err = __nc_convert_os_error();
     }
   }
   if (bytes_written != NULL) { *bytes_written = (size_t)bwritten; }
@@ -204,9 +217,9 @@ nc_error_t nraw_read(void *voidsock, void *buf, size_t bufsize, size_t *bytes_re
       }
 
       // send all data currently possible
-      ssize_t tmp_bread = recv(sock->fd, buf, bufsize - bread, 0);
-      if (tmp_bread == -1 && __internal_nraw_convert_errno() != NC_ERR_TIMED_OUT && __internal_nraw_convert_errno() != NC_ERR_WOULD_BLOCK) {
-        err = __internal_nraw_convert_errno();
+      ssize_t tmp_bread = recv(*sock, buf, bufsize - bread, 0);
+      if (tmp_bread == -1 && __nc_convert_os_error() != NC_ERR_TIMED_OUT && __nc_convert_os_error() != NC_ERR_WOULD_BLOCK) {
+        err = __nc_convert_os_error();
         break;
       }
 
@@ -215,17 +228,48 @@ nc_error_t nraw_read(void *voidsock, void *buf, size_t bufsize, size_t *bytes_re
       bread += tmp_bread;
     }
   } else if (param == NC_OPT_MSG_PEAK) {
-    bread = recv(sock->fd, buf, bufsize, MSG_PEEK); 
+    bread = recv(*sock, buf, bufsize, MSG_PEEK); 
     if (bread == -1) {
       bread = 0;
-      err = __internal_nraw_convert_errno();
+      err = __nc_convert_os_error();
     }
   } else {
-    bread = recv(sock->fd, buf, bufsize, 0);
+    bread = recv(*sock, buf, bufsize, 0);
     if (bread == -1) {
       bread = 0;
-      err = __internal_nraw_convert_errno();
+      err = __nc_convert_os_error();
     }
+  }
+
+  if (bytes_read != NULL) { *bytes_read = (size_t)bread; }
+  return err;
+
+  return NC_ERR_GOOD;
+}
+nc_error_t nraw_writeto(void *voidsock, nc_socketaddr_t *addr, const void *buf, size_t bufsize, size_t *bytes_written, nc_option_t param) {
+  nc_socket_t *sock = (nc_socket_t*)voidsock;
+  ssize_t bwritten = 0;
+  nc_error_t err = NC_ERR_GOOD;
+
+  bwritten = sendto(*sock, buf, bufsize, 0, (struct sockaddr*)&addr->__internal_addr, addr->__internal_addrlen);
+  if (bwritten == -1) {
+    bwritten = 0;
+    err = __nc_convert_os_error();
+  }
+
+  if (bytes_written != NULL) { *bytes_written = (size_t)bwritten; }
+  return err;
+}
+nc_error_t nraw_readfrom(void *voidsock, nc_socketaddr_t *addr, void *buf, size_t bufsize, size_t *bytes_read, nc_option_t param) {
+  nc_socket_t *sock = (nc_socket_t*)voidsock;
+  ssize_t bread = 0;
+  nc_error_t err = NC_ERR_GOOD;
+
+  addr->__internal_addrlen = sizeof(addr->__internal_addrlen);
+  bread = recvfrom(*sock, buf, bufsize, 0, (struct sockaddr*)&addr->__internal_addr, &addr->__internal_addrlen);
+  if (bread == -1) {
+    bread = 0;
+    err = __nc_convert_os_error();
   }
 
   if (bytes_read != NULL) { *bytes_read = (size_t)bread; }
@@ -238,8 +282,8 @@ nc_error_t nraw_read(void *voidsock, void *buf, size_t bufsize, size_t *bytes_re
 nc_error_t nraw_listen(void *voidsock, int backlog) {
   nc_socket_t *sock = (nc_socket_t*)voidsock;
 
-  if (listen(sock->fd, backlog) == -1) {
-    return __internal_nraw_convert_errno();
+  if (listen(*sock, backlog) == -1) {
+    return __nc_convert_os_error();
   }
 
   return NC_ERR_GOOD;
@@ -250,9 +294,9 @@ nc_error_t nraw_accept(void *voidsock, void *voidclient, struct nc_socketaddr *c
 
   struct nc_socketaddr addr;
   socklen_t addrlen = sizeof(addr);
-  int fd = accept(sock->fd, (struct sockaddr*)&addr, &addrlen);
+  int fd = accept(*sock, (struct sockaddr*)&addr, &addrlen);
   if (fd == -1) {
-    return __internal_nraw_convert_errno();
+    return __nc_convert_os_error();
   }
 
   if (clientaddr != NULL) {
@@ -260,7 +304,7 @@ nc_error_t nraw_accept(void *voidsock, void *voidclient, struct nc_socketaddr *c
   }
 
   // Copy client fd
-  client->fd = fd;
+  *client = fd;
 
   return NC_ERR_GOOD;
 }
@@ -268,7 +312,7 @@ nc_error_t nraw_accept(void *voidsock, void *voidclient, struct nc_socketaddr *c
 // poll
 nc_error_t nraw_poll(struct nc_sockpoll *polled, size_t polled_len, int timeout, nc_option_t param) {
   int retval = poll((struct pollfd *)polled, polled_len, timeout);
-  if (retval == -1) return __internal_nraw_convert_errno();
+  if (retval == -1) return __nc_convert_os_error();
   return NC_ERR_GOOD;
 }
 
@@ -280,7 +324,7 @@ nc_error_t nraw_setopt(void *voidsock, nc_option_t option, const void *data, siz
       struct timeval timeout;
       timeout.tv_sec = ((const struct nc_timeval_t*)data)->sec;
       timeout.tv_usec = ((const struct nc_timeval_t*)data)->usec;
-      if (setsockopt(sock->fd, SOL_SOCKET, SO_RCVTIMEO, (struct timeval *)&timeout, sizeof(timeout)) == -1) {
+      if (setsockopt(*sock, SOL_SOCKET, SO_RCVTIMEO, (struct timeval *)&timeout, sizeof(timeout)) == -1) {
         return NC_ERR_SET_OPT_FAIL;
       }
       break;
@@ -288,7 +332,7 @@ nc_error_t nraw_setopt(void *voidsock, nc_option_t option, const void *data, siz
       struct timeval timeout;
       timeout.tv_sec = ((const struct nc_timeval_t*)data)->sec;
       timeout.tv_usec = ((const struct nc_timeval_t*)data)->usec;
-      if (setsockopt(sock->fd, SOL_SOCKET, SO_SNDTIMEO, (struct timeval *)&timeout, sizeof(timeout)) == -1) {
+      if (setsockopt(*sock, SOL_SOCKET, SO_SNDTIMEO, (struct timeval *)&timeout, sizeof(timeout)) == -1) {
         return NC_ERR_SET_OPT_FAIL;
       }
       break;
@@ -297,7 +341,7 @@ nc_error_t nraw_setopt(void *voidsock, nc_option_t option, const void *data, siz
       break;
     case NC_OPT_REUSEADDR: {
       nc_opt_bool_t opt = *((const nc_opt_bool_t*)data);
-      if (setsockopt(sock->fd, SOL_SOCKET, SO_REUSEADDR | SO_REUSEPORT, &opt, sizeof(opt))) {
+      if (setsockopt(*sock, SOL_SOCKET, SO_REUSEADDR | SO_REUSEPORT, &opt, sizeof(opt))) {
         return NC_ERR_SET_OPT_FAIL;
       }
       break;
@@ -311,7 +355,7 @@ nc_error_t nraw_getopt(void *voidsock, nc_option_t option, void *null_data, size
     case NC_OPT_RECV_TIMEOUT: {
       socklen_t timeout_size;
       struct timeval timeout;
-      if (getsockopt(sock->fd, SOL_SOCKET, SO_RCVTIMEO, (struct timeval *)&timeout, &timeout_size) == -1) {
+      if (getsockopt(*sock, SOL_SOCKET, SO_RCVTIMEO, (struct timeval *)&timeout, &timeout_size) == -1) {
         return NC_ERR_SET_OPT_FAIL;
       }
       struct nc_timeval_t *nsts = (struct nc_timeval_t*)null_data;
@@ -321,7 +365,7 @@ nc_error_t nraw_getopt(void *voidsock, nc_option_t option, void *null_data, size
     } case NC_OPT_SEND_TIMEOUT: {
       socklen_t timeout_size;
       struct timeval timeout;
-      if (getsockopt(sock->fd, SOL_SOCKET, SO_SNDTIMEO, (struct timeval *)&timeout, &timeout_size) == -1) {
+      if (getsockopt(*sock, SOL_SOCKET, SO_SNDTIMEO, (struct timeval *)&timeout, &timeout_size) == -1) {
         return NC_ERR_SET_OPT_FAIL;
       }
       struct nc_timeval_t *nsts = (struct nc_timeval_t*)null_data;
@@ -334,7 +378,7 @@ nc_error_t nraw_getopt(void *voidsock, nc_option_t option, void *null_data, size
       break;
     case NC_OPT_REUSEADDR: {
       socklen_t nullsize = 0;
-      if (getsockopt(sock->fd, SOL_SOCKET, SO_REUSEADDR | SO_REUSEPORT, null_data, &nullsize)) {
+      if (getsockopt(*sock, SOL_SOCKET, SO_REUSEADDR | SO_REUSEPORT, null_data, &nullsize)) {
         return NC_ERR_SET_OPT_FAIL;
       }
       break;
@@ -356,6 +400,8 @@ struct nc_functions nc_functions_raw() {
   
   funcs.write  = &nraw_write;
   funcs.read   = &nraw_read;
+  funcs.writeto = &nraw_writeto;
+  funcs.readfrom = &nraw_readfrom;
   
   funcs.listen = &nraw_listen;
   funcs.accept = &nraw_accept;

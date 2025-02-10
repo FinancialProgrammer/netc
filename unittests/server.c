@@ -5,6 +5,7 @@
 struct nc_functions G_sockfuncs;
 
 int main() {
+  NCRAW_INIT();
   nc_error_t err;
 
 #ifdef _USEOPENSSL
@@ -26,17 +27,15 @@ int main() {
   err = G_sockfuncs.setopt(&sock, NC_OPT_CERT_FILE, "./server/certs/server.crt", 0);
   err = G_sockfuncs.setopt(&sock, NC_OPT_PRIV_KEY_FILE, "./server/certs/server.key", 0);
 
-  size_t addrsize = netc_sizeof_socketaddr();
-  char sockaddrbuf[addrsize * 2];
-  struct nc_socketaddr* sockaddr = (struct nc_socketaddr*)sockaddrbuf;
+  struct nc_socketaddr sockaddr;
 
-  err = netc_resolve_ipV4(sockaddr, "127.0.0.1", 10000);
+  err = netc_resolve_addrV4(&sockaddr, NC_OPT_INADDR_ANY, "127.0.0.1", 10000); // 127.0.0.1 is a fallback if INADDR_ANY is not implemented on target machine
   if (err != NC_ERR_GOOD) {
     printf("Error creating socket %s\n", nstrerr(err));
     return 1;
   }
 
-  err = G_sockfuncs.bind(&sock, sockaddr);
+  err = G_sockfuncs.bind(&sock, &sockaddr);
   if (err != NC_ERR_GOOD) {
     fprintf(stderr, "Error opening socket %s\n", nstrerr(err));
     return 0;
@@ -49,8 +48,8 @@ int main() {
   }
 
   NCSOCKET client;
-  struct nc_socketaddr* clientaddr = (struct nc_socketaddr*)(sockaddrbuf + addrsize);
-  err = G_sockfuncs.accept(&sock, &client, clientaddr);
+  struct nc_socketaddr clientaddr;
+  err = G_sockfuncs.accept(&sock, &client, &clientaddr);
 
   size_t _;
   char srvmsg[1024];
@@ -70,5 +69,7 @@ int main() {
   }
 
   G_sockfuncs.close(&sock);
+  
+  NCRAW_DEINIT();
   return 0;
 }

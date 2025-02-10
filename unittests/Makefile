@@ -1,7 +1,7 @@
 CC = g++ -x c++ # gcc
 LIBS = -lnetc
 
-all: connect.out connect.ssl.out server.out server.ssl.out
+all: connect.out connect.ssl.out server.out server.ssl.out serverudp.out connectudp.out
 
 %.ssl.out: %.c
 	${CC} -x c -o $@ $< -D_USEOPENSSL ${LIBS}
