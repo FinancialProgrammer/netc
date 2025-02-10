@@ -48,10 +48,11 @@
   typedef int nc_error_t;
   typedef int nc_option_t;
   typedef int nc_opt_bool_t;
-  struct nc_timeval_t {
+  struct nc_timeval {
     time_t sec; // seconds
     time_t usec; // micro seconds
   };
+  typedef struct nc_timeval nc_timeval_t;
 // ERRORS
   nc_error_t __nc_convert_os_error();
   #define NC_ERR_GOOD                    ((nc_error_t)0)

@@ -322,16 +322,16 @@ nc_error_t nraw_setopt(void *voidsock, nc_option_t option, const void *data, siz
   switch (option) {
     case NC_OPT_RECV_TIMEOUT: {
       struct timeval timeout;
-      timeout.tv_sec = ((const struct nc_timeval_t*)data)->sec;
-      timeout.tv_usec = ((const struct nc_timeval_t*)data)->usec;
+      timeout.tv_sec = ((const nc_timeval_t*)data)->sec;
+      timeout.tv_usec = ((const nc_timeval_t*)data)->usec;
       if (setsockopt(*sock, SOL_SOCKET, SO_RCVTIMEO, (struct timeval *)&timeout, sizeof(timeout)) == -1) {
         return NC_ERR_SET_OPT_FAIL;
       }
       break;
     } case NC_OPT_SEND_TIMEOUT: {
       struct timeval timeout;
-      timeout.tv_sec = ((const struct nc_timeval_t*)data)->sec;
-      timeout.tv_usec = ((const struct nc_timeval_t*)data)->usec;
+      timeout.tv_sec = ((const nc_timeval_t*)data)->sec;
+      timeout.tv_usec = ((const nc_timeval_t*)data)->usec;
       if (setsockopt(*sock, SOL_SOCKET, SO_SNDTIMEO, (struct timeval *)&timeout, sizeof(timeout)) == -1) {
         return NC_ERR_SET_OPT_FAIL;
       }
@@ -358,7 +358,7 @@ nc_error_t nraw_getopt(void *voidsock, nc_option_t option, void *null_data, size
       if (getsockopt(*sock, SOL_SOCKET, SO_RCVTIMEO, (struct timeval *)&timeout, &timeout_size) == -1) {
         return NC_ERR_SET_OPT_FAIL;
       }
-      struct nc_timeval_t *nsts = (struct nc_timeval_t*)null_data;
+      nc_timeval_t *nsts = (nc_timeval_t*)null_data;
       nsts->sec = timeout.tv_sec;
       nsts->usec = timeout.tv_usec;
       return NC_ERR_GOOD;
@@ -368,7 +368,7 @@ nc_error_t nraw_getopt(void *voidsock, nc_option_t option, void *null_data, size
       if (getsockopt(*sock, SOL_SOCKET, SO_SNDTIMEO, (struct timeval *)&timeout, &timeout_size) == -1) {
         return NC_ERR_SET_OPT_FAIL;
       }
-      struct nc_timeval_t *nsts = (struct nc_timeval_t*)null_data;
+      nc_timeval_t *nsts = (nc_timeval_t*)null_data;
       nsts->sec = timeout.tv_sec;
       nsts->usec = timeout.tv_usec;
       return NC_ERR_GOOD;
