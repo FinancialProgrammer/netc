@@ -112,13 +112,16 @@
   // socket
   #define NCSOCKET nc_socket_storage_t
   struct nc_openssl_socket {
-    int fd;
+    NCRAW_SOCKET fd;
     // openssl specific
     void *ssl;
     void *ctx;
   };
   typedef struct nc_openssl_socket nc_openssl_socket_t;
-  typedef NCRAW_SOCKET nc_socket_t;
+  struct nc_socket {
+    NCRAW_SOCKET fd;
+  };
+  typedef struct nc_socket nc_socket_t;
   typedef nc_openssl_socket_t nc_socket_storage_t;
   
   // poll
