@@ -14,34 +14,19 @@
 #include <signal.h> // sig_atomic_t
 // #include <string.h>
 
-
-#ifdef _WIN32
-  #include <winsock2.h>
-  #include <ws2tcpip.h>
-
-  #define NCRAWSOCKET SOCKET
-  #define NCINVALID_SOCKET INVALID_SOCKET
-  #define NCRAW_INIT() { WSADATA wsaData; WSAStartup(MAKEWORD(2, 2), &wsaData); }
-  #define NCRAW_DEINIT() WSACleanup()
-
-  // for bsd style cross compatible sockets
-  #define NCCLOSESOCKET closesocket
-#else // Assume POSIX
-  #include <sys/types.h>
-  #include <sys/socket.h>
-  #include <netinet/in.h>
-  #include <arpa/inet.h>
-  #include <netdb.h>
-  #include <unistd.h>
-
-  #define NCRAW_SOCKET int
-  #define NC_BAD_SOCKET -1
-  #define NCRAW_INIT() ((void)0) // No initialization needed for POSIX
-  #define NCRAW_DEINIT() ((void)0) // No cleanup needed for POSIX
-
-  // for bsd style cross compatible sockets
-  #define NCCLOSESOCKET close
-#endif
+#include <sys/ioctl.h>
+#include <sys/socket.h>
+#include <sys/types.h>
+#include <unistd.h>
+#include <arpa/inet.h>
+#include <errno.h>
+#include <ifaddrs.h>
+#include <net/if.h>
+#include <netdb.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
+#include <sys/epoll.h>
+#include <sys/fcntl.h>
 
 // --- STATIC --- //
 // Types
@@ -77,6 +62,7 @@
   #define NC_ERR_CERT_FILE               ((nc_error_t)19)
   #define NC_ERR_KEY_FILE                ((nc_error_t)20)
   #define NC_ERR_INVL_KEY                ((nc_error_t)21)
+  #define NC_ERR_SIGNAL_INTERRUPT        ((nc_error_t)22)
 // OPTIONS
   #define NC_OPT_NULL         ((nc_option_t)0)
   // socket 
@@ -87,48 +73,61 @@
   #define NC_OPT_TCP          ((nc_option_t)5)
   #define NC_OPT_UDP          ((nc_option_t)6)
   // socket address
-  #define NC_OPT_INADDR_ANY  ((nc_option_t)7)
+  #define NC_OPT_INADDR_ANY   ((nc_option_t)7)
   // setopt / getopt
-  #define NC_OPT_RECV_TIMEOUT  ((nc_option_t)100)
-  #define NC_OPT_SEND_TIMEOUT  ((nc_option_t)101)
-  #define NC_OPT_EXIT_FLAG     ((nc_option_t)102)
-  #define NC_OPT_REUSEADDR     ((nc_option_t)103) // sets SO_REUSEADDR | SO_REUSEPORT
-  #define NC_OPT_CERT_FILE     ((nc_option_t)104)
-  #define NC_OPT_PRIV_KEY_FILE ((nc_option_t)105)
+  #define NC_OPT_RECV_TIMEOUT  ((nc_option_t)1)
+  #define NC_OPT_SEND_TIMEOUT  ((nc_option_t)2)
+  #define NC_OPT_EXIT_FLAG     ((nc_option_t)3)
+  #define NC_OPT_REUSEADDR     ((nc_option_t)4) // sets SO_REUSEADDR | SO_REUSEPORT
+  #define NC_OPT_CERT_FILE     ((nc_option_t)5)
+  #define NC_OPT_PRIV_KEY_FILE ((nc_option_t)6)
+  #define NC_OPT_NON_BLOCKING  ((nc_option_t)7)
   // parameters
-  #define NC_OPT_DO_ALL   ((nc_option_t)200)
-  #define NC_OPT_MSG_PEAK ((nc_option_t)201)
-  #define NC_OPT_POLLIN   ((nc_option_t)201)
+  #define NC_OPT_DO_ALL   ((nc_option_t)1)
+  #define NC_OPT_NONBLOCK ((nc_option_t)2)
+  // poll parameters
+  #define NC_OPT_POLLADD    (1 << 0) // add sock
+  #define NC_OPT_POLLMOD    (1 << 1) // modify sock
+  #define NC_OPT_POLLDLT    (1 << 2) // delete sock
+  #define NC_OPT_POLLIN     (1 << 3) // poll for readable
+  #define NC_OPT_POLLOUT    (1 << 4) // poll for writable
+  #define NC_OPT_POLLCLIENT (1 << 5) // client events
+  #define NC_OPT_NOEPOLLET  (1 << 6) // client events
 // --- END(STATIC) --- //
 
 // --- Socket Structures --- //
-  // socket addr  
+  // SOCKET ADDRESS  
   struct nc_socketaddr {
     struct sockaddr_storage __internal_addr;
     socklen_t __internal_addrlen;
   };
   typedef struct nc_socketaddr nc_socketaddr_t;
 
-  // socket
+  // SOCKET
   #define NCSOCKET nc_socket_storage_t
+  // Open SSL Socket (TCP)
   struct nc_openssl_socket {
-    NCRAW_SOCKET fd;
+    int fd;
     // openssl specific
     void *ssl;
     void *ctx;
+    int is_client; // a client from accept doesn't free ctx as its the server socket ctx
   };
   typedef struct nc_openssl_socket nc_openssl_socket_t;
+  // Raw Socket
   struct nc_socket {
-    NCRAW_SOCKET fd;
+    int fd;
   };
   typedef struct nc_socket nc_socket_t;
+  // Largest Socket Size Needed
   typedef nc_openssl_socket_t nc_socket_storage_t;
   
-  // poll
+  // POLL
+  // poll events
+  typedef struct epoll_event nc_sockpoll_event_t; // internal use
+  // poll fd
   struct nc_sockpoll {
-    int   fd;         /* file descriptor */
-    short events;     /* requested events */
-    short revents;    /* returned events */
+    int fd; // poll fd
   };
   typedef struct nc_sockpoll nc_sockpoll_t;
 // --- END(Socket Structures) --- //
@@ -149,7 +148,9 @@
     nc_error_t (*listen)(void*, int);
     nc_error_t (*accept)(void*, void*, nc_socketaddr_t*);
 
-    nc_error_t (*poll)(struct nc_sockpoll *polled, size_t polled_len, int timeout, nc_option_t param);
+    nc_error_t (*poll_create)(nc_sockpoll_t*);
+    nc_error_t (*poll_ctl)(nc_sockpoll_t*, int fd, void*, nc_option_t);
+    nc_error_t (*poll_wait)(nc_sockpoll_t*, nc_sockpoll_event_t*, size_t, long int timeoutMS, int *count);
 
     nc_error_t (*setopt)(void*, nc_option_t, const void*, size_t);
     nc_error_t (*getopt)(void*, nc_option_t, void*, size_t); // overwrites null_data
@@ -157,11 +158,6 @@
   struct nc_functions nc_functions_raw();
   struct nc_functions nc_functions_openssl();
 // --- END(Socket Functionality) --- //
-
-// --- Other Socket Functionality --- //
-  nc_error_t netc_writeto_frag(void *sock, nc_socketaddr_t*, const void*, size_t, size_t*, nc_option_t, size_t fragments);
-  nc_error_t netc_readto_frag(void *sock, nc_socketaddr_t*, const void*, size_t, size_t*, nc_option_t, size_t fragments);
-// --- END(Other Socket Functionality) --- //
 
 // --- Netowrking Auxiliary --- //
   nc_error_t netc_resolve_addrV6(nc_socketaddr_t *addr, nc_option_t opt, const char *ipaddr, uint16_t port, uint32_t flowinfo, uint32_t scope_id);

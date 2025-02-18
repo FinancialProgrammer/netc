@@ -1,2 +1,3 @@
 # netc
-A small layer to help with cross compatible socket functionality
+A linux library <br>
+Built to make socket functionality easier espically with encrypted wrappers <br>

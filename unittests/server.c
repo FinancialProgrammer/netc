@@ -5,7 +5,6 @@
 struct nc_functions G_sockfuncs;
 
 int main() {
-  NCRAW_INIT();
   nc_error_t err;
 
 #ifdef _USEOPENSSL
@@ -70,6 +69,5 @@ int main() {
 
   G_sockfuncs.close(&sock);
   
-  NCRAW_DEINIT();
   return 0;
 }

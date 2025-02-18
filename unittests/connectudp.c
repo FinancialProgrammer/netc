@@ -7,8 +7,6 @@
 struct nc_functions G_sockfuncs;
 
 int main() {
-  NCRAW_INIT();
-
   nc_error_t err;
 
   #ifdef _USEOPENSSL

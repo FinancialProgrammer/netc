@@ -33,7 +33,9 @@ nc_error_t nraw_listen(void *voidsock, int backlog);
 nc_error_t nraw_accept(void *voidsock, void *voidclient, struct nc_socketaddr *clientaddr);
 
 // poll
-nc_error_t nraw_poll(struct nc_sockpoll *polled, size_t polled_len, int timeout, nc_option_t param);
+nc_error_t nraw_poll_create(nc_sockpoll_t *handle);
+nc_error_t nraw_poll_ctl(nc_sockpoll_t *handle, int fd, void *data, nc_option_t opt);
+nc_error_t nraw_poll_wait(nc_sockpoll_t *handle, nc_sockpoll_event_t *events, size_t eventslen, long int timeout, int *count);
 
 // option
 nc_error_t nraw_setopt(void *voidsock, nc_option_t option, const void *data, size_t data_size);

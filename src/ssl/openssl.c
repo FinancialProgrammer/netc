@@ -11,6 +11,7 @@ nc_error_t ntls_socket(void *void_sock, int domain, int type, int protocol) {
   struct nc_openssl_socket *sock = (struct nc_openssl_socket*)void_sock;
   sock->ssl = NULL;
   sock->ctx = NULL;
+  sock->is_client = 0;
   nraw_socket(void_sock, domain, type, protocol); // cast to a raw socket which should be compatible
   return NC_ERR_GOOD;
 }
@@ -21,7 +22,7 @@ nc_error_t ntls_close(void *void_sock) {
     SSL_free(sock->ssl);
   }
   nraw_close(void_sock);
-  if (sock->ctx) {
+  if (sock->ctx && !sock->is_client) {
     SSL_CTX_free(sock->ctx);
   }
   return NC_ERR_GOOD;
@@ -101,6 +102,7 @@ nc_error_t ntls_accept(void *void_sock, void *void_client, struct nc_socketaddr 
   }
 
   // SSL setup for the accepted client connection
+  client->is_client = 1;
   client->ctx = sock->ctx;  // Reuse the server's SSL context
   client->ssl = SSL_new(client->ctx);
   if (client->ssl == NULL) {
@@ -139,8 +141,29 @@ nc_error_t ntls_write(void *voidsock, const void *buf, size_t bufsize, size_t *b
 
       // send all data currently possible
       ssize_t tmp_bwritten = SSL_write(sock->ssl, buf, bufsize - bwritten);
-      if (tmp_bwritten == -1 && __nc_convert_os_error() != NC_ERR_TIMED_OUT && __nc_convert_os_error() != NC_ERR_WOULD_BLOCK) {
+      if (tmp_bwritten == -1 && __nc_convert_os_error() != NC_ERR_WOULD_BLOCK) {
         err = __nc_convert_os_error();
+        break;
+      }
+
+      // update pointer and size left
+      buf += tmp_bwritten;
+      bwritten += tmp_bwritten;
+    }
+  } else if (param == NC_OPT_NONBLOCK) {
+    while (bwritten < bufsize) {
+      if (*G_exit_flag) {
+        err = NC_ERR_EXIT_FLAG;
+        break;
+      }
+
+      // send all data currently possible
+      ssize_t tmp_bwritten = SSL_write(sock->ssl, buf, bufsize - bwritten);
+      if (tmp_bwritten == -1) {
+        err = __nc_convert_os_error();
+        if (err == NC_ERR_WOULD_BLOCK) err = NC_ERR_GOOD;
+        break;
+      } else if (tmp_bwritten == 0) {
         break;
       }
 
@@ -155,6 +178,7 @@ nc_error_t ntls_write(void *voidsock, const void *buf, size_t bufsize, size_t *b
       err = __nc_convert_os_error();
     }
   }
+
   if (bytes_written != NULL) { *bytes_written = (size_t)bwritten; }
   return err;
 }
@@ -165,16 +189,14 @@ nc_error_t ntls_read(void *voidsock, void *buf, size_t bufsize, size_t *bytes_re
 
   if (param == NC_OPT_DO_ALL) {
     while (bread < bufsize) {
-      // check the Global exit flag for better safety with infinite loops
-      // A timeout should also be possible here
       if (*G_exit_flag) {
         err = NC_ERR_EXIT_FLAG;
         break;
       }
 
-      // send all data currently possible
+      // recv all data currently possible
       ssize_t tmp_bread = SSL_read(sock->ssl, buf, bufsize - bread);
-      if (tmp_bread == -1 && __nc_convert_os_error() != NC_ERR_TIMED_OUT && __nc_convert_os_error() != NC_ERR_WOULD_BLOCK) {
+      if (tmp_bread == -1 && __nc_convert_os_error() != NC_ERR_WOULD_BLOCK) {
         err = __nc_convert_os_error();
         break;
       }
@@ -183,13 +205,26 @@ nc_error_t ntls_read(void *voidsock, void *buf, size_t bufsize, size_t *bytes_re
       buf += tmp_bread;
       bread += tmp_bread;
     }
-  } else if (param == NC_OPT_MSG_PEAK) {
-    // not actually requesting data, this should be fine
-    // but definitly test this
-    bread = recv(sock->fd, buf, bufsize, MSG_PEEK); 
-    if (bread == -1) {
-      bread = 0;
-      err = __nc_convert_os_error();
+  } else if (param == NC_OPT_NONBLOCK) {
+    while (bread < bufsize) {
+      if (*G_exit_flag) {
+        err = NC_ERR_EXIT_FLAG;
+        break;
+      }
+
+      // recv all data currently possible
+      ssize_t tmp_bread = SSL_read(sock->ssl, buf, bufsize - bread);
+      if (tmp_bread == -1) {
+        err = __nc_convert_os_error();
+        if (err == NC_ERR_WOULD_BLOCK) err = NC_ERR_GOOD;
+        break;
+      } else if (tmp_bread == 0) {
+        break;
+      }
+
+      // update pointer and size left
+      buf += tmp_bread;
+      bread += tmp_bread;
     }
   } else {
     bread = SSL_read(sock->ssl, buf, bufsize);
@@ -243,7 +278,9 @@ struct nc_functions nc_functions_openssl() {
   funcs.listen = &nraw_listen;
   funcs.accept = &ntls_accept;
   
-  funcs.poll   = &nraw_poll;
+  funcs.poll_create   = &nraw_poll_create;
+  funcs.poll_ctl      = &nraw_poll_ctl;
+  funcs.poll_wait     = &nraw_poll_wait;
   
   funcs.setopt = &ntls_setopt;
   funcs.getopt = &ntls_getopt;

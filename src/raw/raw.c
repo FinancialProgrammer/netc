@@ -1,20 +1,5 @@
 #include <netc.h>
 
-#include <sys/ioctl.h>
-#include <sys/socket.h>
-#include <sys/types.h>
-#include <unistd.h>
-#include <arpa/inet.h>
-
-#include <errno.h>
-#include <ifaddrs.h>
-#include <net/if.h>
-#include <netdb.h>
-#include <netinet/in.h>
-#include <netinet/tcp.h>
-
-#include <poll.h>
-
 #include <stdio.h>
 #include <string.h>
 
@@ -30,6 +15,7 @@ int *G_exit_flag = &G_default_exit_flag;
 #else
   nc_error_t __nc_convert_os_error() {
     switch (errno) {
+      case EINTR: return NC_ERR_SIGNAL_INTERRUPT; // how does this lead to printing PLACEHODLER 2?
       case EADDRNOTAVAIL: return NC_ERR_INVALID_ADDRESS; // Cannot assign requested address 
       case ECONNREFUSED: return NC_ERR_CONNECTION_REFUSED; // Connection refused 
       case EHOSTUNREACH: return NC_ERR_NOT_INITED; // No route to host 
@@ -143,7 +129,7 @@ nc_error_t nraw_socket(void *voidsock, int domain, int type, int protocol) {
 }
 nc_error_t nraw_close(void *voidsock) { 
   nc_socket_t *sock = (nc_socket_t*)voidsock;
-  NCCLOSESOCKET(sock->fd);
+  close(sock->fd);
   return NC_ERR_GOOD; 
 }
 
@@ -184,8 +170,29 @@ nc_error_t nraw_write(void *voidsock, const void *buf, size_t bufsize, size_t *b
 
       // send all data currently possible
       ssize_t tmp_bwritten = send(sock->fd, buf, bufsize - bwritten, 0);
-      if (tmp_bwritten == -1 && __nc_convert_os_error() != NC_ERR_TIMED_OUT && __nc_convert_os_error() != NC_ERR_WOULD_BLOCK) {
+      if (tmp_bwritten == -1 && __nc_convert_os_error() != NC_ERR_WOULD_BLOCK) {
         err = __nc_convert_os_error();
+        break;
+      }
+
+      // update pointer and size left
+      buf += tmp_bwritten;
+      bwritten += tmp_bwritten;
+    }
+  } else if (param == NC_OPT_NONBLOCK) {
+    while (bwritten < bufsize) {
+      if (*G_exit_flag) {
+        err = NC_ERR_EXIT_FLAG;
+        break;
+      }
+
+      // send all data currently possible
+      ssize_t tmp_bwritten = send(sock->fd, buf, bufsize - bwritten, 0);
+      if (tmp_bwritten == -1) {
+        err = __nc_convert_os_error();
+        if (err == NC_ERR_WOULD_BLOCK) err = NC_ERR_GOOD;
+        break;
+      } else if (tmp_bwritten == 0) {
         break;
       }
 
@@ -200,6 +207,7 @@ nc_error_t nraw_write(void *voidsock, const void *buf, size_t bufsize, size_t *b
       err = __nc_convert_os_error();
     }
   }
+
   if (bytes_written != NULL) { *bytes_written = (size_t)bwritten; }
   return err;
 }
@@ -210,16 +218,14 @@ nc_error_t nraw_read(void *voidsock, void *buf, size_t bufsize, size_t *bytes_re
 
   if (param == NC_OPT_DO_ALL) {
     while (bread < bufsize) {
-      // check the Global exit flag for better safety with infinite loops
-      // A timeout should also be possible here
       if (*G_exit_flag) {
         err = NC_ERR_EXIT_FLAG;
         break;
       }
 
-      // send all data currently possible
+      // recv all data currently possible
       ssize_t tmp_bread = recv(sock->fd, buf, bufsize - bread, 0);
-      if (tmp_bread == -1 && __nc_convert_os_error() != NC_ERR_TIMED_OUT && __nc_convert_os_error() != NC_ERR_WOULD_BLOCK) {
+      if (tmp_bread == -1 && __nc_convert_os_error() != NC_ERR_WOULD_BLOCK) {
         err = __nc_convert_os_error();
         break;
       }
@@ -228,11 +234,26 @@ nc_error_t nraw_read(void *voidsock, void *buf, size_t bufsize, size_t *bytes_re
       buf += tmp_bread;
       bread += tmp_bread;
     }
-  } else if (param == NC_OPT_MSG_PEAK) {
-    bread = recv(sock->fd, buf, bufsize, MSG_PEEK); 
-    if (bread == -1) {
-      bread = 0;
-      err = __nc_convert_os_error();
+  } else if (param == NC_OPT_NONBLOCK) {
+    while (bread < bufsize) {
+      if (*G_exit_flag) {
+        err = NC_ERR_EXIT_FLAG;
+        break;
+      }
+
+      // recv all data currently possible
+      ssize_t tmp_bread = recv(sock->fd, buf, bufsize - bread, 0);
+      if (tmp_bread == -1) {
+        err = __nc_convert_os_error();
+        if (err == NC_ERR_WOULD_BLOCK) err = NC_ERR_GOOD;
+        break;
+      } else if (tmp_bread == 0) { // no more data
+        break;
+      }
+
+      // update pointer and size left
+      buf += tmp_bread;
+      bread += tmp_bread;
     }
   } else {
     bread = recv(sock->fd, buf, bufsize, 0);
@@ -244,8 +265,6 @@ nc_error_t nraw_read(void *voidsock, void *buf, size_t bufsize, size_t *bytes_re
 
   if (bytes_read != NULL) { *bytes_read = (size_t)bread; }
   return err;
-
-  return NC_ERR_GOOD;
 }
 nc_error_t nraw_writeto(void *voidsock, nc_socketaddr_t *addr, const void *buf, size_t bufsize, size_t *bytes_written, nc_option_t param) {
   nc_socket_t *sock = (nc_socket_t*)voidsock;
@@ -311,11 +330,79 @@ nc_error_t nraw_accept(void *voidsock, void *voidclient, struct nc_socketaddr *c
 }
 
 // poll
-nc_error_t nraw_poll(struct nc_sockpoll *polled, size_t polled_len, int timeout, nc_option_t param) {
-  int retval = poll((struct pollfd *)polled, polled_len, timeout);
-  if (retval == -1) return __nc_convert_os_error();
+nc_error_t nraw_poll_create(nc_sockpoll_t *handle) {
+  handle->fd = epoll_create1(0);
+  if (handle->fd == -1) {
+    return __nc_convert_os_error();
+  }
   return NC_ERR_GOOD;
 }
+nc_error_t nraw_poll_ctl(nc_sockpoll_t *handle, int fd, void *data, nc_option_t opt) {
+  if (opt & NC_OPT_POLLDLT) {
+    if (epoll_ctl(handle->fd, EPOLL_CTL_DEL, fd, NULL) == -1) {
+      return __nc_convert_os_error();
+    }
+    return NC_ERR_GOOD;
+  }
+
+  struct epoll_event ev;
+  ev.events = 0;
+  if (!(ev.events & NC_OPT_NOEPOLLET)) {
+    ev.events = EPOLLET;
+  }
+  if (opt & NC_OPT_POLLCLIENT) {
+    ev.events |= EPOLLRDHUP; // client disconnection
+    ev.events |= EPOLLHUP;   // different client disconnection
+  }
+  if (opt & NC_OPT_POLLIN) { // write
+    ev.events |= EPOLLIN;
+  }
+  if (opt & NC_OPT_POLLOUT) { // read
+    ev.events |= EPOLLOUT;
+  }
+  ev.data.ptr = data;
+
+  int epollctl;
+  if (opt & NC_OPT_POLLADD) epollctl = EPOLL_CTL_ADD;
+  else if (opt & NC_OPT_POLLMOD) epollctl = EPOLL_CTL_MOD;
+  else { return NC_ERR_NULL; }
+
+  if (epoll_ctl(handle->fd, epollctl, fd, &ev) == -1) {
+    return __nc_convert_os_error();
+  }
+}
+nc_error_t nraw_poll_wait(nc_sockpoll_t *handle, nc_sockpoll_event_t *events, size_t eventslen, long int timeout, int *count) {
+  *count = epoll_wait(handle->fd, events, eventslen, timeout);
+  if (*count < 0) { 
+    *count = 0;
+    return __nc_convert_os_error(); 
+  }
+
+/*
+  for (int i = 0; i < nfds; ++i) {
+    nc_sockpoll_data_t *data = (nc_sockpoll_data_t*)events[i].data.ptr;
+    int fd = data->fd;
+    if (fd == handle->sfd) {
+      while (handle->accept(handle, data));
+      continue;
+    }
+    if (events[i].events & EPOLLIN) {
+      while (handle->recv(handle, data));
+    } 
+    if (events[i].events & EPOLLOUT) {
+      while(handle->send(handle, data));
+    }
+    if (events[i].events & EPOLLRDHUP) {
+      handle->close(handle, data, NC_ERR_NULL, "RDHUP");
+    }
+    if (events[i].events & EPOLLHUP) {
+      handle->close(handle, data, NC_ERR_NULL, "HUP");
+    }
+  }
+*/
+  return NC_ERR_GOOD;
+}
+
 
 // option
 nc_error_t nraw_setopt(void *voidsock, nc_option_t option, const void *data, size_t data_size) {
@@ -345,6 +432,12 @@ nc_error_t nraw_setopt(void *voidsock, nc_option_t option, const void *data, siz
       if (setsockopt(sock->fd, SOL_SOCKET, SO_REUSEADDR | SO_REUSEPORT, &opt, sizeof(opt))) {
         return NC_ERR_SET_OPT_FAIL;
       }
+      break;
+    } case NC_OPT_NON_BLOCKING: {
+      int flags = fcntl(sock->fd, F_GETFL, 0);
+      if (flags == -1) return __nc_convert_os_error();
+      flags = fcntl(sock->fd, F_SETFL, flags | O_NONBLOCK);
+      if (flags == -1) return __nc_convert_os_error();
       break;
     } default: return NC_ERR_NULL;
   }
@@ -383,6 +476,15 @@ nc_error_t nraw_getopt(void *voidsock, nc_option_t option, void *null_data, size
         return NC_ERR_SET_OPT_FAIL;
       }
       break;
+    } case NC_OPT_NON_BLOCKING: {
+      int flags = fcntl(sock->fd, F_GETFL);
+      if (flags & O_NONBLOCK) {
+        int* todata = (int*)null_data;
+        *todata = 1;
+      } else {
+        int* todata = (int*)null_data;
+        *todata = 0;
+      }
     } default: return NC_ERR_NULL;
   }
   return NC_ERR_GOOD;
@@ -407,8 +509,10 @@ struct nc_functions nc_functions_raw() {
   funcs.listen = &nraw_listen;
   funcs.accept = &nraw_accept;
   
-  funcs.poll   = &nraw_poll;
-  
+  funcs.poll_create   = &nraw_poll_create;
+  funcs.poll_ctl      = &nraw_poll_ctl;
+  funcs.poll_wait     = &nraw_poll_wait;
+
   funcs.setopt = &nraw_setopt;
   funcs.getopt = &nraw_getopt;
   

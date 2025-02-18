@@ -5,8 +5,6 @@
 struct nc_functions G_sockfuncs;
 
 int main() {
-  NCRAW_INIT();
-
   nc_error_t err;
 
 #ifdef _USEOPENSSL
@@ -24,7 +22,7 @@ int main() {
   }
 
   nc_socketaddr_t sockaddr;
-  err = netc_resolve_ipV4(&sockaddr, "127.0.0.1", 10000);
+  err = netc_resolve_addrV4(&sockaddr, NC_OPT_NULL, "127.0.0.1", 10000);
   if (err != NC_ERR_GOOD) {
     printf("Error creating socket %s\n", nstrerr(err));
     return 1;
@@ -43,11 +41,9 @@ int main() {
   char srvmsg[1024];
   G_sockfuncs.read(&sock, srvmsg, sizeof(srvmsg), &_, NC_OPT_NULL);
   srvmsg[_] = '\0';
-  printf("server sent = %s", srvmsg);
+  printf("server sent = %s\n", srvmsg);
 
   G_sockfuncs.close(&sock);
-
-  NCRAW_DEINIT();
 
   return 0;
 }
